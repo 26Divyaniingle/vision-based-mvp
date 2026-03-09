@@ -162,7 +162,7 @@ def get_base64_from_uploaded(file) -> str:
 # ═══════════════════════════════════════
 # WEBSOCKET STREAM COMPONENT
 # ═══════════════════════════════════════
-def render_websocket_stream(session_id: str, patient_id: int, language: str):
+def render_websocket_stream(session_id: str, patient_id: int, patient_name: str, language: str):
     """
     Renders pure HTML/JS to connect to FastAPI WebSocket.
     Features:
@@ -276,7 +276,12 @@ def render_websocket_stream(session_id: str, patient_id: int, language: str):
             statusEl.innerText = '🟢 Connected';
             statusEl.style.color = '#38ef7d';
             // Start the session
-            ws.send(JSON.stringify({{ type: 'start', patient_id: {patient_id}, language: '{language}' }}));
+            ws.send(JSON.stringify({{ 
+                type: 'start', 
+                patient_id: {patient_id}, 
+                patient_name: '{patient_name}',
+                language: '{language}' 
+            }}));
             
             // Start camera
             navigator.mediaDevices.getUserMedia({{ video: true, audio: true }})
@@ -642,7 +647,7 @@ def main_app():
     # Active Interview WS Client
     if st.session_state.interview_active:
         st.markdown("### 🔴 LIVE Interactive Medical Session")
-        render_websocket_stream(st.session_state.interview_session_id, st.session_state.patient_id, st.session_state.language)
+        render_websocket_stream(st.session_state.interview_session_id, st.session_state.patient_id, st.session_state.patient_name, st.session_state.language)
 
 
 # ═══════════════════════════════════════

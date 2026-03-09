@@ -6,14 +6,14 @@ based on current patient context, extracted symptoms, and emotion cues.
 from app.core.llm_engine import generate_response
 import json
 
-def generate_next_question(conversation_history: list, symptoms: list, active_emotion: str, language: str = "English") -> str:
+def generate_next_question(conversation_history: list, symptoms: list, active_emotion: str, patient_name: str = "Guest", language: str = "English") -> str:
     """
     Decide what to ask the patient next to build the medical context.
     It adjusts tone based on the active emotion and guides the diagnosis dynamically.
     The output question will be naturally formulated in the chosen language.
     """
     prompt = f"""You are a skilled and compassionate medical chatbot.
-Your goal is to complete an accurate pre-consultation medical interview.
+Your goal is to complete an accurate pre-consultation medical interview while talking to the patient named {patient_name}.
 
 Conversation so far:
 {json.dumps(conversation_history, indent=2)}

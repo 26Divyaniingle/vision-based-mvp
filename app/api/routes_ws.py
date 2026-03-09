@@ -50,24 +50,25 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
             
             if msg_type == "start":
                 patient_id = data.get("patient_id", -1)
+                patient_name = data.get("patient_name", "Guest")
                 client_lang = data.get("language", "English")
                 
                 # Auto-trigger first question naturally translated
                 GREETINGS = {
-                    "English": "Hello, I am your Medical AI Assistant. Please tell me what brings you in today?",
-                    "Spanish": "Hola, soy su asistente médico de IA. Por favor, dígame qué le trae por aquí hoy.",
-                    "Hindi": "नमस्ते, मैं आपका मेडिकल एआई सहायक हूँ। कृपया मुझे बताएं कि आज आप यहाँ क्यों आए हैं?",
-                    "French": "Bonjour, je suis votre assistant médical IA. S'il vous plaît, dites-moi ce qui vous amène aujourd'hui.",
-                    "Arabic": "مرحباً، أنا المساعد الطبي بالذكاء الاصطناعي الخاص بك. يرجى إخباري بما يجعلك تزورنا اليوم.",
-                    "Portuguese": "Olá, eu sou o seu Assistente Médico de IA. Por favor, diga-me o que o traz cá hoje.",
-                    "German": "Hallo, ich bin Ihr medizinischer KI-Assistent. Bitte sagen Sie mir, was Sie heute zu mir führt.",
-                    "Italian": "Salve, sono il suo assistente medico IA. La prego di dirmi cosa la porta qui oggi.",
-                    "Russian": "Здравствуйте, я ваш медицинский ИИ-ассистент. Пожалуйста, расскажите мне, что вас беспокоит.",
-                    "Japanese": "こんにちは、私はあなたの医療AIアシスタントです。今日はどうされましたか？",
-                    "Korean": "안녕하세요, 저는 귀하의 의료 AI 어시스턴트입니다. 오늘 어떤 일로 오셨는지 말씀해 주세요.",
-                    "Chinese": "您好，我是您的医疗人工智能助理。请告诉我您今天哪里不舒服？",
-                    "Marathi": "नमस्कार, मी तुमचा मेडिकल एआय असिस्टंट आहे. कृपया मला सांगा आज तुम्ही इथे का आला आहात?",
-                    "Hinglish": "Hello, main aapka Medical AI Assistant hoon. Please bataiye aaj aapko kya takleef hai?"
+                    "English": f"Hello {patient_name}, I am your Medical AI Assistant. Please tell me what brings you in today?",
+                    "Spanish": f"Hola {patient_name}, soy su asistente médico de IA. Por favor, dígame qué le trae por aquí hoy.",
+                    "Hindi": f"नमस्ते {patient_name}, मैं आपका मेडिकल एआई सहायक हूँ। कृपया मुझे बताएं कि आज आप यहाँ क्यों आए हैं?",
+                    "French": f"Bonjour {patient_name}, je suis votre assistant médical IA. S'il vous plaît, dites-moi ce qui vous amène aujourd'hui.",
+                    "Arabic": f"مرحباً {patient_name}، أنا المساعد الطبي بالذكاء الاصطناعي الخاص بك. يرجى إخباري بما يجعلك تزورنا اليوم.",
+                    "Portuguese": f"Olá {patient_name}, eu sou o seu Assistente Médico de IA. Por favor, diga-me o que o traz cá hoje.",
+                    "German": f"Hallo {patient_name}, ich bin Ihr medizinischer KI-Assistent. Bitte sagen Sie mir, was Sie heute zu mir führt.",
+                    "Italian": f"Salve {patient_name}, sono il suo assistente medico IA. La prego di dirmi cosa la porta qui oggi.",
+                    "Russian": f"Здравствуйте, {patient_name}, я ваш медицинский ИИ-ассистент. Пожалуйста, расскажите мне, что вас беспокоит.",
+                    "Japanese": f"こんにちは {patient_name}さん、私はあなたの医療AIアシスタントです。今日はどうされましたか？",
+                    "Korean": f"안녕하세요 {patient_name}님, 저는 귀하의 의료 AI 어시스턴트입니다. 오늘 어떤 일로 오셨는지 말씀해 주세요.",
+                    "Chinese": f"您好 {patient_name}，我是您的医疗人工智能助理。请告诉我您今天哪里不舒服？",
+                    "Marathi": f"नमस्कार {patient_name}, मी तुमचा मेडिकल एआय असिस्टंट आहे. कृपया मला सांगा आज तुम्ही इथे का आला आहात?",
+                    "Hinglish": f"Hello {patient_name}, main aapka Medical AI Assistant hoon. Please bataiye aaj aapko kya takleef hai?"
                 }
                 
                 first_q = GREETINGS.get(client_lang, GREETINGS["English"])
@@ -152,7 +153,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     acting_emotion = latest_emotion_metrics["dominant_emotion"]
                     if latest_emotion_metrics["distress_flags"]["pain"]: acting_emotion = "severe pain"
                     
-                    next_q = generate_next_question(conversation_history, list(extracted_symptoms), acting_emotion, language=client_lang)
+                    next_q = generate_next_question(conversation_history, list(extracted_symptoms), acting_emotion, patient_name=patient_name, language=client_lang)
                     
                     if next_q == "INTERVIEW_COMPLETE":
                         # We are ready for diagnosis

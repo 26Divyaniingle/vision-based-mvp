@@ -138,6 +138,28 @@ if "patient_email" not in st.session_state:
 if "patient_phone" not in st.session_state:
     st.session_state.patient_phone = None
 
+# ─── Results Recovery from URL (Bridge) ───
+query_params = st.query_params
+if 'interview_finished' in query_params:
+    try:
+        results_json = query_params['final_results']
+        import urllib.parse
+        decoded_json = urllib.parse.unquote(results_json)
+        final_data = json.loads(decoded_json)
+        st.session_state.interview_results = final_data
+        st.session_state.interview_active = False
+        
+        # Restore patient info if available in results to prevent redirect to login
+        if "patient_info" in final_data:
+            info = final_data["patient_info"]
+            st.session_state.token = info.get("token")
+            st.session_state.patient_id = info.get("id")
+            st.session_state.patient_name = info.get("name")
+            st.session_state.patient_email = info.get("email")
+            st.session_state.patient_phone = info.get("phone")
+    except Exception as e:
+        st.error(f"Error restoring session results: {e}")
+
 if "interview_session_id" not in st.session_state:
     st.session_state.interview_session_id = None
 if "interview_active" not in st.session_state:
@@ -162,7 +184,7 @@ def get_base64_from_uploaded(file) -> str:
 # ═══════════════════════════════════════
 # WEBSOCKET STREAM COMPONENT
 # ═══════════════════════════════════════
-def render_websocket_stream(session_id: str, patient_id: int, patient_name: str, language: str):
+def render_websocket_stream(session_id: str, patient_id: int, patient_name: str, patient_email: str, patient_phone: str, token: str, language: str):
     """
     Renders pure HTML/JS to connect to FastAPI WebSocket.
     Features:
@@ -402,6 +424,15 @@ def render_websocket_stream(session_id: str, patient_id: int, patient_name: str,
         function finishInterview() {{
             // send data back to Streamlit URL params to bridge JS -> Python
             if(finalStatusData) {{
+                // Add patient info to the payload to survive reload
+                finalStatusData.patient_info = {{
+                    id: {patient_id},
+                    name: '{patient_name}',
+                    email: '{patient_email}',
+                    phone: '{patient_phone}',
+                    token: '{token}'
+                }};
+                
                 const url = new URL(window.parent.location);
                 // We encode the stringified JSON
                 url.searchParams.set('interview_finished', 'true');
@@ -494,62 +525,59 @@ def auth_page():
 # ═══════════════════════════════════════
 # RESULTS DISPLAY
 # ═══════════════════════════════════════
-def display_results(data):
-    """Display the final interview results and AI diagnosis."""
-    st.markdown("""
-    <div class="main-header" style="background: linear-gradient(135deg, #11998e, #38ef7d);">
-        <h1>✅ Session Complete</h1>
-        <p>Medical Vision Agentic AI Report</p>
-    </div>
-    """, unsafe_allow_html=True)
+def display_results(results):
+    st.markdown('<div class="main-header"><h1>📋 Medical Analysis Report</h1><p>Patient Intelligence Summary</p></div>', unsafe_allow_html=True)
+    
+    ai = results.get("diagnosis", {})
+    vision = results.get("vision", {})
+    symptoms = results.get("symptoms", [])
 
-    ai = data.get("diagnosis", {})
-    vision = data.get("vision", {})
-    symptoms = data.get("symptoms", [])
-
-    st.markdown("### 🩺 NLP Extracted Symptoms")
-    if symptoms:
-        symptoms_html = ""
-        for s in symptoms:
-            symptoms_html += f'<span class="symptom-tag">{s}</span> '
-        st.markdown(symptoms_html, unsafe_allow_html=True)
-    else:
-        st.info("No symptoms extracted.")
-
-    st.markdown("---")
-
-    res_col1, res_col2 = st.columns(2)
+    res_col1, res_col2 = st.columns([1, 1.2])
 
     with res_col1:
-        st.markdown(f"""
-        <div class="results-card">
-            <h3 style="color: #667eea;">📊 Webcam Emotion Metrics</h3>
-            <p><strong>Dominant Emotion:</strong> {vision.get('dominant_emotion', 'N/A').title()}</p>
-            <p><strong>Avg Eye Fatigue:</strong> {vision.get('avg_eye_strain', 0):.2f}</p>
-            <p><strong>Avg Discomfort Tension:</strong> {vision.get('avg_lip_tension', 0):.2f}</p>
-            <hr>
-            <p><strong>Stress Flag:</strong> {'🚨 TRUE' if vision.get('distress_flags', {}).get('stress') else 'Normal'}</p>
-            <p><strong>Pain Flag:</strong> {'🚨 TRUE' if vision.get('distress_flags', {}).get('pain') else 'Normal'}</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown('<div class="results-card" style="border-left: 5px solid #667eea;">', unsafe_allow_html=True)
+        st.subheader("👁️ Bio-Visual Insights")
+        st.write(f"**Dominant Emotion:** {vision.get('dominant_emotion', 'N/A').title()}")
+        st.progress(min(max(vision.get('avg_eye_strain', 0)/10.0, 0.0), 1.0), text=f"Eye Strain: {vision.get('avg_eye_strain', 0):.2f}")
+        st.progress(min(max(vision.get('avg_lip_tension', 0)/10.0, 0.0), 1.0), text=f"Lip Tension: {vision.get('avg_lip_tension', 0):.2f}")
+        
+        st.markdown("**Reported Symptoms:**")
+        if symptoms:
+            for s in symptoms:
+                st.markdown(f'<span class="symptom-tag">{s}</span>', unsafe_allow_html=True)
+        else:
+            st.write("No major symptoms extracted.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     with res_col2:
+        st.markdown('<div class="results-card" style="border-left: 5px solid #38ef7d;">', unsafe_allow_html=True)
+        st.subheader("🤖 MedGemma Diagnosis")
+        
+        # Large probability display
+        conf_val = ai.get('confidence', 0) * 100
         st.markdown(f"""
-        <div class="results-card">
-            <h3 style="color: #38ef7d;">🧠 Agentic Diagnosis</h3>
-            <p><strong>Condition:</strong> {ai.get('condition', 'N/A')}</p>
-            <p><strong>Confidence:</strong> {(ai.get('confidence', 0) * 100):.1f}%</p>
-            <p><strong>Prescription/Care:</strong> {ai.get('medication', 'N/A')}</p>
-            <p><strong>Safety Checked:</strong> {'✅ Passed' if ai.get('safety_passed') else '⚠️ Failed Guidelines'}</p>
-        </div>
+            <div style="text-align:center; padding:10px; background:rgba(56, 239, 125, 0.1); border-radius:10px; margin-bottom:15px;">
+                <span style="font-size:0.9rem; color:#aaa;">Condition Probability</span><br/>
+                <span style="font-size:2rem; font-weight:bold; color:#38ef7d;">{conf_val:.1f}%</span>
+            </div>
         """, unsafe_allow_html=True)
+        
+        st.markdown(f"**Primary Problem:** <span style='font-size:1.2rem; color:#f093fb;'>{ai.get('condition', 'Unknown')}</span>", unsafe_allow_html=True)
+        st.markdown(f"**Recommended Remedy:** {ai.get('medication', 'N/A')}")
+        st.markdown(f"**Prevention & Precaution:** {ai.get('prevention', 'N/A')}")
+        
+        safety = ai.get('safety_passed', False)
+        if safety:
+            st.success("✅ Prescription cleared by Safety Agent.")
+        else:
+            st.warning("⚠️ PROCEED WITH CAUTION: AI suggests direct medical intervention.")
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # Export Section
     st.markdown("---")
-    st.markdown("### 🖨️ Patient Delivery")
-    exp_col1, exp_col2 = st.columns(2)
+    st.markdown("### 💾 Distribution & Export")
+    exp_col1, exp_col2 = st.columns([1, 1])
     
-    # We must construct session_data matching the old format for reports to work
     session_data = {
         "symptoms": ", ".join(symptoms) if symptoms else "None",
         "vision": vision,
@@ -557,36 +585,39 @@ def display_results(data):
     }
     
     with exp_col1:
-        if st.button("📄 Generate PDF Local"):
-            with st.spinner("Generating PDF..."):
+        st.info("Download the official PDF report for your records.")
+        if st.button("📥 Download Report (PDF)", use_container_width=True):
+            with st.spinner("Compiling PDF..."):
                 pdf_res = requests.post(f"{API_URL}/report/generate_pdf", json={"session_data": session_data})
                 if pdf_res.status_code == 200:
                     pdf_bytes = base64.b64decode(pdf_res.json()["pdf_base64"])
-                    st.download_button("⬇️ Download PDF", data=pdf_bytes, file_name="Medical_Report.pdf", mime="application/pdf")
+                    st.download_button("💾 Click to Save PDF", data=pdf_bytes, file_name=f"Consultation_{st.session_state.patient_name}.pdf", mime="application/pdf", use_container_width=True)
                 else:
-                    st.error("PDF generation failed.")
+                    st.error("Error generating PDF.")
 
     with exp_col2:
-        email_val = st.session_state.patient_email or ""
-        email_addr = st.text_input("Auto-Delivery Email Address", value=email_val, placeholder="patient@example.com")
-        if st.button("📬 Auto-Dispatch Report (Email/SMS)") and email_addr:
-            with st.spinner("Dispatching via Agent..."):
-                em_res = requests.post(f"{API_URL}/report/email_pdf", json={
-                    "session_data": session_data,
-                    "email": email_addr,
-                    "patient_name": st.session_state.patient_name
-                })
-                if em_res.status_code == 200:
-                    st.success(f"Report dispatched to {email_addr}!")
-                else:
-                    st.error("Failed to send.")
+        st.info("Send the report directly to your registered email.")
+        email_addr = st.text_input("Confirm Email Address", value=st.session_state.patient_email or "", placeholder="email@example.com")
+        if st.button("📧 Send Report to Email", type="secondary", use_container_width=True):
+            if email_addr:
+                with st.spinner("Dispatching Email Agent..."):
+                    em_res = requests.post(f"{API_URL}/report/email_pdf", json={
+                        "session_data": session_data,
+                        "email": email_addr,
+                        "patient_name": st.session_state.patient_name
+                    })
+                    if em_res.status_code == 200:
+                        st.success(f"Report successfully sent to {email_addr}!")
+                    else:
+                        st.error("Email delivery failed. Check SMTP settings.")
+            else:
+                st.warning("Please enter a valid email address.")
 
     st.markdown("---")
-    if st.button("🔄 Start New Live Session", type="primary"):
+    if st.button("🔄 Start New Consultation Session", type="primary", use_container_width=True):
         st.session_state.interview_session_id = None
         st.session_state.interview_active = False
         st.session_state.interview_results = None
-        # Remove URL params so it starts fresh
         st.query_params.clear()
         st.rerun()
 
@@ -598,23 +629,10 @@ def main_app():
     # Top Bar
     st.markdown(f"""
     <div style="display:flex; justify-content:space-between; align-items:center; background:#16213e; padding:15px; border-radius:10px; color:white; margin-bottom:15px;">
-        <span><strong>Patient:</strong> {st.session_state.patient_name} (ID: {st.session_state.patient_id})</span>
-        <form style="margin:0;"><button style="background:transparent; border:1px solid #f5576c; color:#f5576c; border-radius:5px; padding:5px 10px; cursor:pointer;">Logout</button></form>
+        <span>👤 <strong>Patient:</strong> {st.session_state.patient_name}</span>
+        <a href="/" target="_self" style="text-decoration:none;"><button style="background:transparent; border:1px solid #f5576c; color:#f5576c; border-radius:5px; padding:5px 10px; cursor:pointer;">Logout</button></a>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Check if we have results coming back from JS URL params
-    query_params = st.query_params
-    if 'interview_finished' in query_params:
-        try:
-            results_json = query_params.get('final_results')
-            import urllib.parse
-            decoded_json = urllib.parse.unquote(results_json)
-            final_data = json.loads(decoded_json)
-            st.session_state.interview_results = final_data
-            st.session_state.interview_active = False
-        except Exception as e:
-            st.error(f"Error reading results: {e}")
 
     # Display results if available
     if st.session_state.interview_results:
@@ -647,7 +665,15 @@ def main_app():
     # Active Interview WS Client
     if st.session_state.interview_active:
         st.markdown("### 🔴 LIVE Interactive Medical Session")
-        render_websocket_stream(st.session_state.interview_session_id, st.session_state.patient_id, st.session_state.patient_name, st.session_state.language)
+        render_websocket_stream(
+            st.session_state.interview_session_id, 
+            st.session_state.patient_id,
+            st.session_state.patient_name,
+            st.session_state.patient_email,
+            st.session_state.patient_phone,
+            st.session_state.token,
+            st.session_state.language
+        )
 
 
 # ═══════════════════════════════════════

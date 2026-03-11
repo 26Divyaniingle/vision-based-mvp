@@ -1,58 +1,62 @@
 """
 Speech-to-Text Engine
-Uses OpenAI Whisper via API for audio transcription.
+Uses Google Gemini 1.5 Flash for high-accuracy multimodal audio transcription.
+This replaces OpenAI Whisper as a more cost-effective and integrated alternative.
 """
 import os
 import io
 import tempfile
-import openai
+import google.generativeai as genai
 from app.config import settings
 
-WHISPER_LANG_MAP = {
-    "English": "en",
-    "Spanish": "es",
-    "Hindi": "hi",
-    "French": "fr",
-    "Arabic": "ar",
-    "Portuguese": "pt",
-    "German": "de",
-    "Italian": "it",
-    "Russian": "ru",
-    "Japanese": "ja",
-    "Korean": "ko",
-    "Chinese": "zh",
-    "Marathi": "mr",
-    "Hinglish": "hi"
-}
+# Configure Google AI
+if settings.GEMINI_API_KEY:
+    genai.configure(api_key=settings.GEMINI_API_KEY)
 
 async def process_audio_chunk(audio_bytes: bytes, language: str = "English") -> str:
     """
-    Simulates real-time STT for a chunk of audio using OpenAI Whisper.
-    If no API key is provided, returns a mock transcription to prevent crashing.
+    Transcribes audio using Google Gemini 1.5 Flash's multimodal capabilities.
+    Gemini supports audio input directly and provides excellent contextual accuracy.
     """
-    if not settings.OPENAI_API_KEY:
-        return "Audio received but OPENAI_API_KEY is not set."
+    if not settings.GEMINI_API_KEY:
+        return "Audio received but GEMINI_API_KEY is not set."
 
-    iso_lang = WHISPER_LANG_MAP.get(language, "en")
+    model = genai.GenerativeModel("models/gemini-flash-latest")
     
     try:
-        client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        
+        # Create temporary file to store audio for Gemini consumption
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
             f.write(audio_bytes)
             tmp_name = f.name
             
-        with open(tmp_name, "rb") as audio_file:
-            transcript = await client.audio.transcriptions.create(
-                model="whisper-1", 
-                file=audio_file,
-                language=iso_lang,
-                response_format="text"
-            )
-        os.remove(tmp_name)
-        return transcript
+        # Upload file to Gemini (using the modern GenAI File API approach)
+        # For small chunks, we can pass them as a list of parts [text, {'mime_type': '...', 'data': ...}]
+        # but temporary file is safer for varied webm containers.
+        
+        # Determine prompt based on language
+        prompt = f"Transcribe the following audio precisely. The patient is speaking in {language}."
+        if language == "Hinglish":
+            prompt = "Transcribe the following audio. The patient is speaking a mix of Hindi and English (Hinglish). Provide the output in Roman script."
+
+        # Process the audio directly with the model
+        # Note: We use a simple part-based approach for the flash model
+        response = model.generate_content([
+            prompt,
+            {
+                "mime_type": "audio/webm",
+                "data": audio_bytes
+            }
+        ])
+        
+        # Cleanup
+        if os.path.exists(tmp_name):
+            os.remove(tmp_name)
+            
+        return response.text.strip()
+        
     except Exception as e:
         if 'tmp_name' in locals() and os.path.exists(tmp_name):
             os.remove(tmp_name)
-        print(f"Whisper STT Error: {e}")
+        print(f"Gemini STT Error: {e}")
+        # Basic fallback to empty string so the conversation doesn't break
         return ""

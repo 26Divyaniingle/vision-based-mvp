@@ -152,7 +152,8 @@ cython_debug/
 .vscode/
 
 # Project specific
-data/
+data/*
+!data/**/.gitkeep
 *.pdf
 *.mp3
 *.wav

@@ -1,68 +1,108 @@
-# Vision Agentic AI MVP - Real-Time Medical  Chatbot
+# Vision-Based Agentic AI Healthcare System (Homeopathy MVP)
 
-This project is an advanced Vision-Based Agentic AI Healthcare System. It features a conversational medical chatbot that conducts an interview with the patient, extracting progressive symptoms through NLP while simultaneously analyzing live webcam feeds to evaluate emotional state, eye strain, and lip tension.
+An advanced, real-time medical diagnostic ecosystem powered by **Native Agentic AI**. This system integrates computer vision, multimodal speech processing, and a multi-agent supervisor-worker architecture to provide high-accuracy homeopathic consultations.
 
-## How to Run the Project
+![Project Banner](https://img.shields.io/badge/AI-Native_Agentic-blueviolet?style=for-the-badge)
+![Tech Stack](https://img.shields.io/badge/Stack-FastAPI_|_Streamlit_|_Gemini-blue?style=for-the-badge)
 
-You need to run two separate processes: the backend API and the frontend UI.
+---
 
-### 1. Setup Environment
-Ensure you have activated your virtual environment and installed all dependencies:
+## 🚀 Key Features
+
+- **Native Agentic Design:** Custom-built orchestration (no LangChain/LangGraph) for ultra-low latency and direct multimodal control.
+- **Bi-modal AI Interview:** Real-time speech-to-speech interaction using Google Gemini 1.5 Flash (STT) and Microsoft Edge-TTS.
+- **Live Vision Diagnostics:** Background monitoring of patient emotions and physical state using YOLOv8 and Computer Vision.
+- **RAG-Powered Diagnosis:** Leverages a FAISS Vector Database to compare current symptoms with historical medical cases.
+- **Automated Reporting:** Generates professional PDF medical reports and dispatches them via automated email agents.
+
+---
+
+## 🛠️ Technology Stack
+
+| Component | Technology |
+| :--- | :--- |
+| **Backend** | FastAPI (Python) |
+| **Frontend** | Streamlit |
+| **LLM / STT** | Google Gemini 1.5 Flash (Multimodal) |
+| **TTS** | Microsoft Edge-TTS (Neural Voices) |
+| **Computer Vision** | YOLOv8, DeepFace, OpenCV |
+| **Vector DB** | FAISS (Facebook AI Similarity Search) |
+| **Database** | SQLite (SQLAlchemy ORM) |
+
+---
+
+## 📁 Project Structure
+
+```text
+├── app/
+│   ├── agents/          # Specialized AI Agents (Condition, Medication, Safety)
+│   ├── api/             # FastAPI Routes & WebSocket Handlers
+│   ├── core/            # AI Engines (Gemini LLM, FAISS Store, Embeddings)
+│   ├── services/        # Utilities (STT, TTS, Email, PDF Generation)
+│   ├── vision/          # Computer Vision logic (YOLO, Face Recognition)
+│   └── main.py          # Backend Entry Point
+├── data/                # Local Persistence (Database & Vector Index)
+├── frontend/
+│   └── streamlit_app.py # Primary User Interface
+├── .env                 # API Keys & Configuration
+└── requirements.txt     # Dependency List
+```
+
+---
+
+## 🔄 The Native Agentic Workflow
+
+### 1. Unified Authentication
+Patients log in using facial recognition or secure tokens. The system loads their historical context from the local database.
+
+### 2. Multi-Sensory Consultations
+During the AI interview, the system listens (STT), speaks (TTS), and watches (Vision) simultaneously. 
+- **STT:** Captured audio bytes are sent directly to Gemini Flash for context-aware transcription.
+- **Vision:** YOLOv8 analyzes facial cues to detect pain or emotional distress.
+
+### 3. The Agentic Pipeline
+When the interview ends, the **Supervisor Agent** orchestrates four specialized sub-agents:
+1. **Comparison Agent:** Retrieves similar cases from the FAISS Vector Store using text embeddings.
+2. **Condition Agent:** Reasons over (Form + Vision + History) to predict the condition.
+3. **Medication Agent:** Selects optimal homeopathic remedies.
+4. **Safety Agent:** Validates the plan against medical safety rules.
+5. **Learning Agent:** Re-indexes the session to make the system smarter for the next patient.
+
+---
+
+## 🏃‍♂️ How to Run
+
+### 1. Environment Setup
 ```bash
-# If using Windows powershell
-venv\Scripts\activate
+# Create and activate venv
+python -m venv venv
+source venv/bin/activate  # venv\Scripts\activate on Windows
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Start the FastAPI Backend
-Open a terminal in the root directory and start the server:
-```bash
-# From the vision_agentic_ai_mvp directory
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+### 2. Configure Credentials
+Create a `.env` file in the root directory:
+```text
+GEMINI_API_KEY=your_google_ai_studio_key
+DATABASE_URL=sqlite:///./data/vision_agent.db
+EMAIL_SENDER=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password
 ```
-*The backend must be running first because the frontend relies on it.*
 
-### 3. Start the Streamlit Frontend
-Open a **new** terminal, activate the environment, and run the Streamlit app:
+### 3. Launch the System
+**Terminal 1 (Backend):**
 ```bash
-# From the vision_agentic_ai_mvp directory
-streamlit run frontend\streamlit_app.py
+uvicorn app.main:app --reload
 ```
-This will automatically open your default browser pointing to `http://localhost:8501`.
 
-## Medical Interview Flow Overview
+**Terminal 2 (Frontend):**
+```bash
+streamlit run frontend/streamlit_app.py
+```
 
-1. **Authentication**
-   - The user registers their face and logs in securely using DeepFace facial recognition.
-   - Fallback authentication is available via token.
+---
 
-2. **Pre-Consultation**
-   - The patient provides basic details such as age and weight.
-   - Patient hits the "Start AI Interview" button.
-
-3. **Real-time Questioning & Speech Handling**
-   - The AI starts the consultation by asking a sequence of targeted medical questions (from `question_bank.py`).
-   - The interface reads the questions aloud using **Browser-native TTS** (Text-to-Speech).
-   - The user answers the questions either by typing or by speaking utilizing the **Browser-native STT** engine (Speech Recognition).
-
-4. **Continuous Vision Analysis**
-   - As the interview progresses, a webcam stream takes continuous snapshots.
-   - DeepFace and MediaPipe extract vision metrics including *dominant emotion*, *eye strain*, and *lip tension*.
-   - This data is aggregated across the entire interview duration to form a "Vision Summary" over time.
-
-5. **NLP Symptom Extraction (Gemini LLM)**
-   - Every time the patient gives an answer, the backend uses a prompt tailored for Gemini to extract named medical symptoms, severity, patterns, lifestyle issues, or medications mentioned in that turn.
-   - The AI aggregates symptoms cumulatively throughout the conversation.
-
-6. **Agentic Workflows (The resulting diagnosis)**
-   - After the final question, the engine compiles the complete conversational history, the array of extracted symptoms, and the computed vision averages.
-   - These parameters map into the existing **Supervisor Agent** logic:
-     - **Comparison Agent:** Retrieves similar historical medical cases via Faiss vector store.
-     - **Condition Agent:** Predicts the likely condition with a percentage confidence.
-     - **Medication Agent:** Suggests homeopathic remedies.
-     - **Safety Agent:** Checks recommended meds against safe guidelines.
-     - **Learning Agent:** Re-incorporates the newly solved case back into the vector memory.
-
-7. **Reporting**
-   - The finalized session report shows both the Vision trends and the AI medical diagnosis.
-   - Users can download this report as a generated PDF or have it emailed directly to them.
+## 📄 License
+This project is developed as a Healthcare AI MVP. All medical suggestions should be verified by a licensed healthcare professional.

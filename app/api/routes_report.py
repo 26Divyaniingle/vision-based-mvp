@@ -14,7 +14,7 @@ class ReportRequest(BaseModel):
 @router.post("/generate_pdf")
 def generate_pdf(req: ReportRequest):
     try:
-        pdf_bytes = generate_session_pdf_bytes(req.session_data)
+        pdf_bytes = generate_session_pdf_bytes(req.session_data, patient_name=req.patient_name)
         import base64
         # Return base64 encoded PDF
         return {"success": True, "pdf_base64": base64.b64encode(pdf_bytes).decode('utf-8')}
@@ -27,7 +27,7 @@ def email_pdf(req: ReportRequest):
         raise HTTPException(status_code=400, detail="Missing email address.")
     
     try:
-        pdf_bytes = generate_session_pdf_bytes(req.session_data)
+        pdf_bytes = generate_session_pdf_bytes(req.session_data, patient_name=req.patient_name)
         res = send_report_email(req.email, pdf_bytes, req.patient_name)
         return {"success": res, "msg": "Email sent" if res else "Email failed to send"}
     except Exception as e:

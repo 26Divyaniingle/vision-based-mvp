@@ -1,33 +1,56 @@
 from fpdf import FPDF
 import io
 
-def generate_session_pdf_bytes(session_data: dict) -> bytes:
+def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient") -> bytes:
     pdf = FPDF()
     pdf.add_page()
     
-    # Title
-    pdf.set_font("helvetica", "B", 16)
-    pdf.cell(0, 10, "Medical Vision Agentic AI - Session Report", ln=True, align="C")
-    pdf.ln(10)
+    # Header Branding
+    pdf.set_fill_color(15, 12, 41) # Dark Blue theme from UI
+    pdf.rect(0, 0, 210, 40, 'F')
     
-    # Patient Info (if any)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("helvetica", "B", 20)
+    pdf.cell(0, 15, "MEDICAL CONSULTATION REPORT", ln=True, align="C")
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(0, 5, "Powered by Vision Agentic AI & MedGemma", ln=True, align="C")
+    pdf.ln(15)
+    
+    # Body Text Color
+    pdf.set_text_color(0, 0, 0)
+    
+    # Patient Info Header
     pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 10, "Patient Consultation Details", ln=True)
-    pdf.set_font("helvetica", "", 12)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(0, 10, f"  Patient: {patient_name}", ln=True, fill=True)
+    
+    import datetime
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    pdf.set_font("helvetica", "I", 9)
+    pdf.cell(0, 8, f"Report Generated: {now}", ln=True)
+    pdf.ln(5)
     
     v = session_data.get("vision", {})
     ai = session_data.get("ai_results", {})
     symptoms = session_data.get("symptoms", "No symptoms described.")
     
-    pdf.cell(0, 10, f"Symptoms Reported:", ln=True)
-    pdf.set_font("helvetica", "I", 11)
+    # Correcting vision keys to match FastAPI backend (routes_ws.py / latest_emotion_metrics)
+    emotion = v.get('dominant_emotion', v.get('emotion', 'Neutral'))
+    eye_strain = v.get('avg_eye_strain', v.get('eye_strain_score', 0))
+    lip_tension = v.get('avg_lip_tension', v.get('lip_tension', 0))
+
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(0, 10, f"Reported Symptoms:", ln=True)
+    pdf.set_font("helvetica", "", 11)
     pdf.multi_cell(0, 7, symptoms)
-    pdf.ln(2)
+    pdf.ln(5)
     
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(0, 10, "Bio-Visual Analysis", ln=True)
     pdf.set_font("helvetica", "", 12)
-    pdf.cell(0, 10, f"Dominant Emotion Detected: {v.get('emotion', 'Neutral').title()}", ln=True)
-    pdf.cell(0, 10, f"Eye Strain Score: {v.get('eye_strain_score', 0):.2f}", ln=True)
-    pdf.cell(0, 10, f"Lip Tension Score: {v.get('lip_tension', 0):.2f}", ln=True)
+    pdf.cell(0, 8, f"- Dominant Emotion: {str(emotion).title()}", ln=True)
+    pdf.cell(0, 8, f"- Eye Strain Score: {float(eye_strain):.2f}", ln=True)
+    pdf.cell(0, 8, f"- Lip Tension Score: {float(lip_tension):.2f}", ln=True)
     
     pdf.ln(5)
     pdf.set_font("helvetica", "B", 12)
@@ -36,17 +59,24 @@ def generate_session_pdf_bytes(session_data: dict) -> bytes:
     pdf.multi_cell(0, 10, f"Predicted Condition: {ai.get('condition', 'Unknown')}")
     pdf.cell(0, 10, f"Probability/Confidence: {ai.get('confidence', 0)*100:.1f}%", ln=True)
     
+    # Process possible list outcomes from LLM
+    meds = ai.get('medication', 'No medication provided.')
+    if isinstance(meds, list): meds = "\n".join([f"• {m}" for m in meds])
+    
+    prev = ai.get('prevention', 'Maintain standard health precautions.')
+    if isinstance(prev, list): prev = "\n".join([f"• {p}" for p in prev])
+
     pdf.ln(5)
     pdf.set_font("helvetica", "B", 11)
-    pdf.cell(0, 8, "Recommended Remedies (Homeopathic/Natural):", ln=True)
+    pdf.cell(0, 8, "Recommended Remedies:", ln=True)
     pdf.set_font("helvetica", "", 11)
-    pdf.multi_cell(0, 7, f"{ai.get('medication', 'No medication provided.')}")
+    pdf.multi_cell(0, 7, meds)
     
     pdf.ln(5)
     pdf.set_font("helvetica", "B", 11)
     pdf.cell(0, 8, "Preventive Measures & Lifestyle Advice:", ln=True)
     pdf.set_font("helvetica", "", 11)
-    pdf.multi_cell(0, 7, f"{ai.get('prevention', 'Maintain standard health precautions.')}")
+    pdf.multi_cell(0, 7, prev)
     
     pdf.ln(10)
     pdf.set_font("helvetica", "B", 12)

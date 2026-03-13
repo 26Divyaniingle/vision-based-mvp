@@ -588,7 +588,10 @@ def display_results(results):
         st.info("Download the official PDF report for your records.")
         if st.button("📥 Download Report (PDF)", use_container_width=True):
             with st.spinner("Compiling PDF..."):
-                pdf_res = requests.post(f"{API_URL}/report/generate_pdf", json={"session_data": session_data})
+                pdf_res = requests.post(f"{API_URL}/report/generate_pdf", json={
+                    "session_data": session_data,
+                    "patient_name": st.session_state.patient_name
+                })
                 if pdf_res.status_code == 200:
                     pdf_bytes = base64.b64decode(pdf_res.json()["pdf_base64"])
                     st.download_button("💾 Click to Save PDF", data=pdf_bytes, file_name=f"Consultation_{st.session_state.patient_name}.pdf", mime="application/pdf", use_container_width=True)

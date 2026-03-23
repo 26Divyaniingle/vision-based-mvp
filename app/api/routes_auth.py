@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.auth.face_auth import register_face, login_face
 from app.auth.token_auth import login_token
+from app.auth.recovery_routes import router as recovery_router
 
 router = APIRouter()
 
@@ -40,3 +41,6 @@ def login_with_token(req: TokenLoginRequest, db: Session = Depends(get_db)):
     if not res["success"]:
         raise HTTPException(status_code=401, detail=res["msg"])
     return res
+
+# Recovery endpoints
+router.include_router(recovery_router, prefix="/recovery", tags=["recovery"])

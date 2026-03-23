@@ -159,3 +159,5 @@ data/*
 *.wav
 *.mp4
 *.log
+
+pip-cache/

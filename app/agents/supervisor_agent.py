@@ -14,21 +14,25 @@ def run_agentic_workflow(form_data: dict, vision_features: dict):
     # Medication & Prevention
     med_res = suggest_medication(condition, form_data)
     meds = med_res.get("medication", "")
+    ayurvedic = med_res.get("ayurvedic", "")
     prevention = med_res.get("prevention", "")
     
     # Safety
     safe = run_safety_check(meds)
     if not safe:
         meds = "Proposed medication failed safety checks. Please consult a doctor directly."
+        ayurvedic = "Please consult a doctor before trying any home remedies."
         prevention = "Consult a licensed medical professional immediately."
     
     # Learning (Store interaction)
-    store_session_for_learning(form_data, vision_features, condition, meds)
+    combined_meds = f"Homeopathy: {meds} | Ayurvedic: {ayurvedic}"
+    store_session_for_learning(form_data, vision_features, condition, combined_meds)
     
     return {
         "condition": condition,
         "confidence": conf,
         "medication": meds,
+        "ayurvedic": ayurvedic,
         "prevention": prevention,
         "safety_passed": safe,
         "similar_cases": similar_cases

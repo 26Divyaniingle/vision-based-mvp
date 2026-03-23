@@ -3,13 +3,14 @@ from app.core.llm_engine import generate_response
 
 def suggest_medication(condition: str, form_data: dict) -> dict:
     prompt = f"""
-You are MedGemma, a homeopathic and general wellness expert.
+You are MedGemma, a general medical and ayurvedic wellness expert.
 Condition: {condition}
 Patient Symptoms: {form_data.get('symptoms', '')}
 
-Provide a care plan in JSON format with exactly these two keys:
-1. "medication": 1-2 safe homeopathic or natural remedies (2 sentences max).
-2. "prevention": 2-3 specific preventive measures or lifestyle precautions for this condition.
+Provide a care plan in JSON format with exactly these three keys:
+1. "medication": 1-2 standard medical/allopathic or suitable remedies (2 sentences max).
+2. "ayurvedic": 1-2 home ayurvedic remedies (2 sentences max).
+3. "prevention": 2-3 specific preventive measures or lifestyle precautions for this condition.
 
 Return ONLY the raw JSON.
 """
@@ -21,10 +22,12 @@ Return ONLY the raw JSON.
         data = json.loads(resp)
         return {
             "medication": data.get("medication", "Standard homeopathic care advised."),
+            "ayurvedic": data.get("ayurvedic", "Standard ayurvedic care advised."),
             "prevention": data.get("prevention", "Maintain rest and hydration.")
         }
     except Exception:
         return {
             "medication": "Consult a specialist for prescribed homeopathic care.",
+            "ayurvedic": "Consult an ayurvedic expert for home remedies.",
             "prevention": "Maintain standard precautions for symptoms."
         }

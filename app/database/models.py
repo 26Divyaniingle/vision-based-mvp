@@ -14,6 +14,10 @@ class Patient(Base):
     email = Column(String, default="")
     token = Column(String, unique=True, index=True)
     face_embedding = Column(Text) # JSON string of list of floats
+    hashed_token = Column(String, nullable=True)
+    otp_code = Column(String, nullable=True)
+    otp_expiry = Column(DateTime, nullable=True)
+    otp_attempts = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class Session(Base):

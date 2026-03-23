@@ -18,6 +18,8 @@ edge-tts
 twilio
 transformers
 torch
+pandas
+numpy
 torchaudio
 openai
 fpdf2

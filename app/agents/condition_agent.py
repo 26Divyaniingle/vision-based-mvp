@@ -1,7 +1,7 @@
 from app.core.llm_engine import generate_response
 import json
 
-def predict_condition(form_data: dict, vision_features: dict, similar_cases: list):
+def predict_condition(form_data: dict, vision_features: dict, similar_cases: list, rag_context: str):
     prompt = f"""
 You are a medical diagnostic assistant matching the 'MedGemma' persona.
 Analyze the following patient data:
@@ -9,7 +9,10 @@ Form: {json.dumps(form_data)}
 Vision Insights: {json.dumps(vision_features)}
 Similar Historical Cases: {json.dumps(similar_cases)}
 
-Output ONLY a JSON with two keys:
+REFERENCE MEDICAL KNOWLEDGE (RAG):
+{rag_context}
+
+Based ON the patient data and the provided reference medical knowledge, output ONLY a JSON with two keys:
 "condition": <the predicted medical condition, concise>
 "confidence": <float between 0 and 1>
 """

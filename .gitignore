@@ -159,3 +159,4 @@ data/*
 *.wav
 *.mp4
 *.log
+faiss/

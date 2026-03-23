@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from fastapi.responses import Response
 from app.reports.pdf_generator import generate_session_pdf_bytes
-from app.reports.email_service import send_report_email
+from app.reports.sendgrid_service import send_report_email
 
 router = APIRouter()
 

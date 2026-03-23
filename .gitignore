@@ -160,3 +160,4 @@ data/*
 *.mp4
 *.log
 faiss/
+pip-cache/

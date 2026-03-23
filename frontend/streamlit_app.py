@@ -1,3 +1,4 @@
+
 import streamlit as st
 import requests
 import base64
@@ -478,6 +479,90 @@ def auth_page():
                 else:
                     st.error("Face login failed. Try Token or Register.")
 
+        # Recovery Flow
+        st.info("🔒 **Face login not working / Forgot token?** Recover your account below.")
+        with st.expander("**Recover Account** (Email → OTP → New Token)", expanded=False):
+            if "recovery_step" not in st.session_state:
+                st.session_state.recovery_step = "email"
+            if "recovery_email" not in st.session_state:
+                st.session_state.recovery_email = ""
+            
+            if st.session_state.recovery_step == "email":
+                email = st.text_input("Enter your registered email", value=st.session_state.recovery_email)
+                if st.button("📧 Send Recovery OTP", type="primary"):
+                    if email:
+                        st.session_state.recovery_email = email
+                        with st.spinner("Sending OTP..."):
+                            r = requests.post(f"{API_URL}/auth/recovery/forgot-token", json={"email": email})
+                            if r.status_code == 200:
+                                st.success("✅ OTP sent to your email! Check inbox (or spam).")
+                                st.session_state.recovery_step = "otp"
+                                st.rerun()
+                            else:
+                                try:
+                                    st.error(r.json().get("detail", "Failed to send OTP."))
+                                except:
+                                    st.error(f"Send OTP error: {r.status_code} {r.text[:200]}")
+                    else:
+                        st.warning("Please enter email.")
+            
+            elif st.session_state.recovery_step == "otp":
+                otp = st.text_input("Enter 6-digit OTP from email", type="password")
+                if st.button("✅ Verify OTP"):
+                    r = requests.post(f"{API_URL}/auth/recovery/verify-otp", json={
+                        "email": st.session_state.recovery_email, 
+                        "otp": otp
+                    })
+                    if r.status_code == 200:
+                        st.success("✅ OTP verified! Set new token.")
+                        st.session_state.recovery_step = "reset"
+                        st.rerun()
+                    else:
+                        try:
+                            st.error(r.json().get("detail", "Invalid OTP. Try again."))
+                        except:
+                            st.error(f"Verify OTP error: {r.status_code} {r.text[:200]}")
+                if st.button("← Back to email", key="back_email"):
+                    st.session_state.recovery_step = "email"
+                    st.rerun()
+            
+            elif st.session_state.recovery_step == "reset":
+                new_token = st.text_input("Set new token (save this!)", type="password")
+                st.info("📷 (Optional but recommended) Capture a new face to re-register Face Login.")
+                reset_cam = st.camera_input("Capture New Face")
+                
+                if st.button("🔑 Reset Token & Face Login", type="primary"):
+                    payload = {
+                        "email": st.session_state.recovery_email, 
+                        "new_token": new_token
+                    }
+                    if reset_cam:
+                        payload["image_base64"] = get_base64_from_uploaded(reset_cam)
+                        
+                    r = requests.post(f"{API_URL}/auth/recovery/reset-token", json=payload)
+                    if r.status_code == 200:
+                        # Auto login with new token
+                        login_r = requests.post(f"{API_URL}/auth/login/token", json={"token": new_token})
+                        if login_r.status_code == 200:
+                            login_data = login_r.json()
+                            st.session_state.token = new_token
+                            st.session_state.patient_name = login_data["name"]
+                            st.session_state.patient_id = login_data["id"]
+                            st.session_state.patient_email = st.session_state.recovery_email
+                            st.success(f"✅ Token reset & logged in! Welcome, {login_data['name']} (save token: {new_token[:8]}...)")
+                            st.session_state.interview_active = False  # Reset session
+                            st.rerun()
+                        else:
+                            st.warning("Token reset OK, but auto-login failed. Use Token tab with new token.")
+                    else:
+                        try:
+                            st.error(r.json().get("detail", "Reset failed."))
+                        except:
+                            st.error(f"Reset error: {r.status_code} {r.text[:200]}")
+                if st.button("← Back", key="back_reset"):
+                    st.session_state.recovery_step = "otp"
+                    st.rerun()
+
     with tab2:
         st.subheader("Register New Patient")
         with st.form("reg_form"):
@@ -504,7 +589,11 @@ def auth_page():
                         data = r.json()
                         st.success(f"Registered! Your fallback Token/OTP is: {data['token']}")
                     else:
-                        st.error(r.json().get('detail', 'Registration error.'))
+                        try:
+                            error_detail = r.json().get('detail', 'Registration error.')
+                        except:
+                            error_detail = f"Server error: {r.status_code} {r.text[:200]}"
+                        st.error(error_detail)
 
     with tab3:
         st.subheader("Token Fallback Login")
@@ -563,7 +652,9 @@ def display_results(results):
         """, unsafe_allow_html=True)
         
         st.markdown(f"**Primary Problem:** <span style='font-size:1.2rem; color:#f093fb;'>{ai.get('condition', 'Unknown')}</span>", unsafe_allow_html=True)
-        st.markdown(f"**Recommended Remedy:** {ai.get('medication', 'N/A')}")
+        st.markdown(f"**Recommended Medication:** {ai.get('medication', 'N/A')}")
+        if 'ayurvedic' in ai:
+            st.markdown(f"**🌿 Ayurvedic Home Remedy:** {ai.get('ayurvedic', 'N/A')}")
         st.markdown(f"**Prevention & Precaution:** {ai.get('prevention', 'N/A')}")
         
         safety = ai.get('safety_passed', False)

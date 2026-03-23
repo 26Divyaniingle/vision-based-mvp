@@ -78,6 +78,14 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
     pdf.set_font("helvetica", "", 11)
     pdf.multi_cell(0, 7, prev)
     
+    pdf.ln(5)
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(0, 8, "Ayurvedic & Wellness Advice:", ln=True)
+    pdf.set_font("helvetica", "", 11)
+    ayur = ai.get('ayurvedic', 'Consult an ayurvedic expert.')
+    if isinstance(ayur, list): ayur = "\n".join([f"• {a}" for a in ayur])
+    pdf.multi_cell(0, 7, ayur)
+
     pdf.ln(10)
     pdf.set_font("helvetica", "B", 12)
     pdf.cell(0, 10, "Safety & Compliance Status: ", ln=False)

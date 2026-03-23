@@ -32,7 +32,7 @@ def run_agentic_workflow(form_data: dict, vision_features: dict):
         prevention = "Consult a licensed medical professional immediately."
     
     # Learning (Store interaction)
-    combined_meds = f"Homeopathy: {meds} | Ayurvedic: {ayurvedic}"
+    combined_meds = f"Clinical/Allopathic: {meds} | Ayurvedic: {ayurvedic}"
     store_session_for_learning(form_data, vision_features, condition, combined_meds)
     
     return {

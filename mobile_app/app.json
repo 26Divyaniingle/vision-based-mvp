@@ -1,0 +1,48 @@
+{
+    "expo": {
+        "name": "Vision Agentic AI",
+        "slug": "vision-agentic-ai",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "icon": "./assets/icon.png",
+        "scheme": "visionai",
+        "userInterfaceStyle": "dark",
+        "splash": {
+            "image": "./assets/splash.png",
+            "resizeMode": "contain",
+            "backgroundColor": "#0f0c29"
+        },
+        "ios": {
+            "supportsTablet": true,
+            "bundleIdentifier": "com.visionai.mvp",
+            "infoPlist": {
+                "NSCameraUsageDescription": "We need camera access to analyze your facial features for medical insights.",
+                "NSMicrophoneUsageDescription": "We need microphone access for voice-based symptom collection."
+            }
+        },
+        "android": {
+            "adaptiveIcon": {
+                "foregroundImage": "./assets/adaptive-icon.png",
+                "backgroundColor": "#0f0c29"
+            },
+            "package": "com.visionai.mvp",
+            "permissions": [
+                "android.permission.CAMERA",
+                "android.permission.RECORD_AUDIO"
+            ]
+        },
+        "web": {
+            "bundler": "metro",
+            "output": "static",
+            "favicon": "./assets/favicon.png"
+        },
+        "plugins": [
+            "expo-router",
+            "expo-camera",
+            "expo-av"
+        ],
+        "experiments": {
+            "typedRoutes": true
+        }
+    }
+}

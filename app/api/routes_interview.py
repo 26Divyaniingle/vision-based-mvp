@@ -181,14 +181,17 @@ def complete_interview(req: CompleteInterviewRequest, db: DBSession = Depends(ge
     # Save session to database
     try:
         db_session = create_session(
-            db,
-            session.patient_id,
-            vision_features["emotion"],
-            vision_features,
-            ai_result["condition"],
-            ai_result["confidence"],
-            ai_result["medication"],
-            ai_result["safety_passed"]
+            db=db,
+            session_id=req.session_id,
+            patient_id=session.patient_id,
+            transcript=summary["conversation_history"],
+            symptoms=summary["extracted_symptoms"],
+            emotion_metrics=vision_features,
+            condition=ai_result["condition"],
+            confidence=ai_result["confidence"],
+            medication=ai_result["medication"],
+            safety=int(ai_result["safety_passed"]),
+            distress=vision_summary.get("avg_eye_strain", 0) > 0.7 # Example distress logic
         )
         session_db_id = db_session.id
     except Exception as e:

@@ -84,4 +84,8 @@ def reset_hashed_token(db: Session, patient_id: int, hashed_token: str, face_emb
         db.refresh(patient)
         return True
     return False
+def get_session_by_id(db: Session, session_id: str):
+    return db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
 
+def get_sessions_by_patient_id(db: Session, patient_id: int):
+    return db.query(SessionModel).filter(SessionModel.patient_id == patient_id).order_by(SessionModel.created_at.desc()).all()

@@ -40,7 +40,56 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
     patient_id = -1 # to be obtained upon start message
     client_lang = "English" # Default
     total_frames = 0
+    vision_task_active = False # Flag to prevent overlapping vision tasks
     
+    async def send_tts_audio(text, language):
+        """Helper to generate and send TTS audio as a background task."""
+        try:
+            audio_bytes = await generate_speech_bytes(text, language=language)
+            audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+            await websocket.send_text(json.dumps({
+                "type": "audio",
+                "audio_b64": audio_b64
+            }))
+        except Exception as e:
+            print(f"TTS Background Task Error: {e}")
+
+    async def run_vision_analysis(img_b64):
+        nonlocal vision_task_active, total_frames, latest_emotion_metrics
+        try:
+            import asyncio
+            # Offload CPU-bound CV tasks to a separate thread to avoid blocking the event loop (Fixes 1011 timeout)
+            analysis = await asyncio.to_thread(analyze_webcam_frame, img_b64)
+            
+            # Update average metrics
+            emo = analysis["emotion"]
+            flags = analysis["distress_flags"]
+            
+            counts = latest_emotion_metrics["emotion_counts"]
+            counts[emo] = counts.get(emo, 0) + 1
+            
+            # Compute rolling averages
+            total_frames += 1
+            prev_eye = latest_emotion_metrics["avg_eye_strain"]
+            curr_eye = analysis["features"].get("eye_strain_score", 0)
+            latest_emotion_metrics["avg_eye_strain"] = prev_eye + (curr_eye - prev_eye) / total_frames
+            
+            prev_lip = latest_emotion_metrics["avg_lip_tension"]
+            curr_lip = analysis["features"].get("lip_tension", 0)
+            latest_emotion_metrics["avg_lip_tension"] = prev_lip + (curr_lip - prev_lip) / total_frames
+            
+            latest_emotion_metrics["distress_flags"]["stress"] |= flags["stress"]
+            latest_emotion_metrics["distress_flags"]["pain"] |= flags["pain"]
+            latest_emotion_metrics["dominant_emotion"] = max(counts, key=counts.get)
+            
+            if flags["pain"]:
+                await websocket.send_text(json.dumps({
+                    "type": "alert",
+                    "message": "Pain expressions detected. I'm noting this in your profile."
+                }))
+        finally:
+            vision_task_active = False
+
     try:
         while True:
             # Receive text or binary data
@@ -74,61 +123,29 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                 first_q = GREETINGS.get(client_lang, GREETINGS["English"])
                 conversation_history.append({"role": "bot", "text": first_q})
                 
-                # Send text Q
+                # Send Audio TTS of Q (Awaited to ensure synchronous delivery with text)
+                audio_bytes = await generate_speech_bytes(first_q, language=client_lang)
+                audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+                
+                # Send text and audio together
                 await websocket.send_text(json.dumps({
                     "type": "question", 
                     "text": first_q,
+                    "audio_b64": audio_b64,
                     "symptoms_so_far": list(extracted_symptoms)
-                }))
-                
-                # Send Audio TTS of Q
-                audio_bytes = await generate_speech_bytes(first_q, language=client_lang)
-                audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
-                await websocket.send_text(json.dumps({
-                    "type": "audio",
-                    "audio_b64": audio_b64
                 }))
                 continue
 
             elif msg_type == "video_frame":
                 # Received live webcam snapshot 
                 img_b64 = data.get("image_base64", "")
-                if img_b64:
-                    # Async wrapper not strictly necessary for fast CV operations, but good practice
-                    analysis = analyze_webcam_frame(img_b64)
-                    
-                    # Update average metrics
-                    emo = analysis["emotion"]
-                    flags = analysis["distress_flags"]
-                    
-                    counts = latest_emotion_metrics["emotion_counts"]
-                    counts[emo] = counts.get(emo, 0) + 1
-                    
-                    # Compute rolling averages (simplistic)
-                    total_frames += 1
-                    prev_eye = latest_emotion_metrics["avg_eye_strain"]
-                    curr_eye = analysis["features"].get("eye_strain_score", 0)
-                    latest_emotion_metrics["avg_eye_strain"] = prev_eye + (curr_eye - prev_eye) / total_frames
-                    
-                    prev_lip = latest_emotion_metrics["avg_lip_tension"]
-                    curr_lip = analysis["features"].get("lip_tension", 0)
-                    latest_emotion_metrics["avg_lip_tension"] = prev_lip + (curr_lip - prev_lip) / total_frames
-                    
-                    # Mark persistent distress
-                    latest_emotion_metrics["distress_flags"]["stress"] |= flags["stress"]
-                    latest_emotion_metrics["distress_flags"]["pain"] |= flags["pain"]
-                    latest_emotion_metrics["dominant_emotion"] = max(counts, key=counts.get)
-                    
-                    # Send live feedback if distress is severe
-                    if flags["pain"]:
-                        await websocket.send_text(json.dumps({
-                            "type": "alert",
-                            "message": "Pain expressions detected. I'm noting this in your profile."
-                        }))
+                if img_b64 and not vision_task_active:
+                    vision_task_active = True
+                    import asyncio
+                    asyncio.create_task(run_vision_analysis(img_b64))
 
             elif msg_type == "audio_chunk":
                 # Patient sent audio explicitly or just transcribed text
-                # We expect actual base64 audio if STT model handles bytes, else browser-transcribed text
                 audio_b64 = data.get("audio_b64", "")
                 stt_text = data.get("text", "") # Fallback if browser did STT
                 
@@ -145,15 +162,24 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         "text": stt_text
                     }))
                     
-                    # Extract symptoms
-                    new_symps = extract_symptoms_ner(stt_text)
+                    # Extract symptoms (Offload NER to thread)
+                    await websocket.send_text(json.dumps({
+                        "type": "processing",
+                        "text": "🔬 Mapping clinical markers..."
+                    }))
+                    new_symps = await asyncio.to_thread(extract_symptoms_ner, stt_text)
                     extracted_symptoms.update(new_symps)
                     
-                    # Generate next question
+                    # Generate next question (Offload LLM to thread to keep loop responsive)
+                    await websocket.send_text(json.dumps({
+                        "type": "processing",
+                        "text": "🧠 Synthesizing your symptoms..."
+                    }))
                     acting_emotion = latest_emotion_metrics["dominant_emotion"]
                     if latest_emotion_metrics["distress_flags"]["pain"]: acting_emotion = "severe pain"
                     
-                    next_q = generate_next_question(conversation_history, list(extracted_symptoms), acting_emotion, patient_name=patient_name, language=client_lang)
+                    next_q = await asyncio.to_thread(generate_next_question, conversation_history, list(extracted_symptoms), acting_emotion, patient_name=patient_name, language=client_lang)
+
                     
                     if next_q == "INTERVIEW_COMPLETE":
                         # We are ready for diagnosis
@@ -162,7 +188,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                             "text": "Thank you for sharing. Generating your comprehensive medical analysis..."
                         }))
                         
-                        agent_res = predict_condition(list(extracted_symptoms), latest_emotion_metrics, conversation_history)
+                        agent_res = await asyncio.to_thread(predict_condition, list(extracted_symptoms), latest_emotion_metrics, conversation_history)
                         
                         # Save session to SQLite DB
                         create_session(
@@ -188,19 +214,20 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     else:
                         conversation_history.append({"role": "bot", "text": next_q})
                         
-                        # Send text Q
+                        # Generate TTS (Awaited)
                         await websocket.send_text(json.dumps({
-                            "type": "question",
-                            "text": next_q,
-                            "symptoms_so_far": list(extracted_symptoms)
+                            "type": "processing",
+                            "text": "🗣️ Preparing AI response..."
                         }))
-                        
-                        # Send TTS
                         audio_resp_bytes = await generate_speech_bytes(next_q, language=client_lang)
                         resp_audio_b64 = base64.b64encode(audio_resp_bytes).decode("utf-8")
+                        
+                        # Send text and audio together
                         await websocket.send_text(json.dumps({
-                            "type": "audio",
-                            "audio_b64": resp_audio_b64
+                            "type": "question", 
+                            "text": next_q,
+                            "audio_b64": resp_audio_b64,
+                            "symptoms_so_far": list(extracted_symptoms)
                         }))
 
     except WebSocketDisconnect:

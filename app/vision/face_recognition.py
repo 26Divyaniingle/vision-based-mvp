@@ -4,11 +4,19 @@ import numpy as np
 import base64
 
 def get_face_embedding(image_base64: str) -> list:
-    # Ensure proper base64 padding
-    image_base64 += "=" * ((4 - len(image_base64) % 4) % 4)
-    # Decode base64 to image
-    nparr = np.frombuffer(base64.b64decode(image_base64), np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    try:
+        # Ensure proper base64 padding
+        if "," in image_base64:
+            image_base64 = image_base64.split(",")[1]
+        image_base64 += "=" * ((4 - len(image_base64) % 4) % 4)
+        # Decode base64 to image
+        nparr = np.frombuffer(base64.b64decode(image_base64), np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return []
+    except Exception as e:
+        print(f"Base64 decode error: {e}")
+        return []
     
     # Generate embedding using DeepFace (Facenet)
     try:

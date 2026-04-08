@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Dimensions, ActivityIndicator } from 'react-native';
 import { CameraView } from 'expo-camera';
-import { useAudioPlayer, useAudioRecorder, createAudioPlayer, requestRecordingPermissionsAsync, AudioModule, RecordingPresets } from 'expo-audio';
-import * as FileSystem from 'expo-file-system';
+import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, requestRecordingPermissionsAsync, RecordingPresets } from 'expo-audio';
+import { File, Paths } from 'expo-file-system';
 import { Mic, MicOff, LogOut, Activity, AlertCircle, MessageSquare } from 'lucide-react-native';
 import { Colors, Typography, Spacing, Radii, Shadows } from '../../theme';
 import GlassCard from '../../components/GlassCard';
 import AnimatedWaveform from '../../components/AnimatedWaveform';
+import AIStatusBanner from '../../components/AIStatusBanner';
 import { buildWsUrl } from '../../api/report';
 
 const ConsultationScreen = ({ route, navigation }) => {
@@ -20,12 +21,38 @@ const ConsultationScreen = ({ route, navigation }) => {
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [metrics, setMetrics] = useState({ emotion: 'neutral', stress: false, pain: false });
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  // Unified phase for AIStatusBanner: null | 'listening' | 'processing' | 'speaking' | 'finalizing' | 'reconnecting'
+  const [currentPhase, setCurrentPhase] = useState(null);
+  const reconnectTimeout = useRef(null);
+  const reconnectAttempts = useRef(0);
+  const heartbeatInterval = useRef(null);
+  const chatScrollRef = useRef(null);
 
   const ws = useRef(null);
   const cameraRef = useRef(null);
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recordingRef = useRef(null);
   const frameInterval = useRef(null);
+  const player = useAudioPlayer(null);
+  const playerStatus = useAudioPlayerStatus(player);
+
+  const isMutedRef = useRef(isMuted);
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
+  const playTTSRef = useRef(null);
+  
+  useEffect(() => {
+    setIsAiSpeaking(playerStatus.playing);
+    // Sync speaking phase
+    if (playerStatus.playing) {
+      setCurrentPhase('speaking');
+    } else if (!isAiProcessing && !isReconnecting && !isFinalizing) {
+      setCurrentPhase(null);
+    }
+  }, [playerStatus.playing]);
 
   useEffect(() => {
     connectWebSocket();
@@ -35,23 +62,55 @@ const ConsultationScreen = ({ route, navigation }) => {
     return () => {
       if (ws.current) ws.current.close();
       if (frameInterval.current) clearInterval(frameInterval.current);
-      // cleanup done by hooks mainly, but let's be explicit if needed
+      if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
+      if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
     };
   }, []);
 
   useEffect(() => {
     if (isMicActive) {
+      setCurrentPhase('listening');
       startRecording();
     } else {
+      if (!isAiProcessing && !isAiSpeaking && !isFinalizing && !isReconnecting) {
+        setCurrentPhase(null);
+      }
       stopRecording();
     }
   }, [isMicActive]);
 
+  // Auto-scroll to bottom when messages update
+  useEffect(() => {
+    if (chatScrollRef.current && messages.length > 0) {
+      setTimeout(() => {
+        chatScrollRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages, currentPhase]);
+
   const connectWebSocket = () => {
     const url = buildWsUrl(sessionId);
+    console.log(`Connecting to WebSocket: ${url}`);
+    
+    if (ws.current) {
+        ws.current.close();
+    }
+
     ws.current = new WebSocket(url);
 
     ws.current.onopen = () => {
+      console.log('WebSocket Connected');
+      setIsReconnecting(false);
+      setCurrentPhase(null);
+      reconnectAttempts.current = 0;
+      
+      // Start heartbeat to keep connection alive
+      heartbeatInterval.current = setInterval(() => {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          ws.current.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 20000);
+
       ws.current.send(JSON.stringify({
         type: 'start',
         patient_id: patient.id,
@@ -60,34 +119,71 @@ const ConsultationScreen = ({ route, navigation }) => {
       }));
     };
 
-    ws.current.onmessage = async (e) => {
+    ws.current.onmessage = (e) => {
       const data = JSON.parse(e.data);
       
       switch (data.type) {
         case 'question':
+          setIsAiProcessing(false);
+          setCurrentPhase(null); // will flip to 'speaking' when audio starts
           setMessages(prev => [...prev, { role: 'bot', text: data.text }]);
-          setSymptoms(data.symptoms_so_far || []);
+          if (data.symptoms_so_far) {
+            setSymptoms(data.symptoms_so_far);
+          }
+          if (data.audio_b64 && !isMutedRef.current && playTTSRef.current) {
+            playTTSRef.current(data.audio_b64);
+          }
           break;
         case 'transcript':
+          setIsAiProcessing(true);
+          setCurrentPhase('processing');
           setMessages(prev => [...prev, { role: 'patient', text: data.text }]);
           break;
         case 'audio':
-          if (!isMuted) playTTS(data.audio_b64);
+          setIsAiProcessing(false);
+          if (!isMutedRef.current && playTTSRef.current) {
+            playTTSRef.current(data.audio_b64);
+          }
           break;
         case 'alert':
           setMetrics(prev => ({ ...prev, stress: true }));
           break;
         case 'processing':
           setIsAiProcessing(true);
-          setMessages(prev => [...prev, { role: 'bot', text: data.text }]);
+          setCurrentPhase('processing');
+          if (data.text) {
+            setMessages(prev => [...prev, { role: 'status', text: data.text }]);
+          }
           break;
         case 'finalize':
           setIsAiProcessing(false);
           setIsFinalizing(true);
+          setCurrentPhase('finalizing');
           setTimeout(() => {
             navigation.replace('Results', { diagnosis: data.diagnosis, sessionId });
           }, 2000);
           break;
+      }
+    };
+
+
+    ws.current.onerror = (e) => {
+      console.error('WebSocket Error:', e.message);
+    };
+
+    ws.current.onclose = (e) => {
+      console.log(`WebSocket Closed: ${e.code} ${e.reason}`);
+      if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
+      
+      if (!isFinalizing && reconnectAttempts.current < 5) {
+        setIsReconnecting(true);
+        setCurrentPhase('reconnecting');
+        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
+        reconnectAttempts.current += 1;
+        console.log(`Attempting to reconnect in ${delay}ms (Attempt ${reconnectAttempts.current})`);
+        reconnectTimeout.current = setTimeout(() => {
+          connectWebSocket();
+        }, delay);
       }
     };
   };
@@ -96,11 +192,11 @@ const ConsultationScreen = ({ route, navigation }) => {
     frameInterval.current = setInterval(async () => {
       if (cameraRef.current && ws.current && ws.current.readyState === WebSocket.OPEN) {
         try {
-          const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.3, scale: 0.5 });
+          const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.2, scale: 0.4 });
           ws.current.send(JSON.stringify({ type: 'video_frame', image_base64: photo.base64 }));
         } catch (e) {}
       }
-    }, 3000);
+    }, 5000);
   };
 
   const setupAudio = async () => {
@@ -110,26 +206,31 @@ const ConsultationScreen = ({ route, navigation }) => {
     }
   };
 
-  const playTTS = async (base64Audio) => {
-    const uri = `${FileSystem.cacheDirectory}temp_audio.mp3`;
-    await FileSystem.writeAsStringAsync(uri, base64Audio, { encoding: 'base64' });
-    
-    // In SDK 55 expo-audio, useAudioPlayer handles the sound
-    // This part might need better React logic, but let's try a simple version
-    // Actually you can't easily dynamic-load with useAudioPlayer in a function
-    // But you can use AudioModule to create a player
-    const player = createAudioPlayer(uri);
-    player.play();
-    setIsAiSpeaking(true);
-    
-    // Listen for completion
-    // player.on('playbackFinished', () => setIsAiSpeaking(false));
-  };
+  const playTTS = React.useCallback(async (base64Audio) => {
+    try {
+      const file = new File(Paths.cache, 'temp_audio.mp3');
+      await file.write(base64Audio, { encoding: 'base64' });
+      
+      if (player && !player.isReleased) {
+        player.replace(file.uri);
+        player.play();
+      }
+    } catch (e) {
+      console.error('Error in playTTS:', e);
+    }
+  }, [player]);
+
+
+  useEffect(() => {
+    playTTSRef.current = playTTS;
+  }, [player]);
 
   const startRecording = async () => {
     try {
       if (!audioRecorder.isRecording) {
-        await audioRecorder.prepareToRecordAsync();
+        if (audioRecorder.prepareToRecordAsync) {
+            await audioRecorder.prepareToRecordAsync();
+        }
         audioRecorder.record();
       }
     } catch (err) {
@@ -144,9 +245,8 @@ const ConsultationScreen = ({ route, navigation }) => {
       const uri = audioRecorder.uri;
 
       if (uri && ws.current && ws.current.readyState === WebSocket.OPEN) {
-        const base64Audio = await FileSystem.readAsStringAsync(uri, {
-          encoding: 'base64',
-        });
+        const file = new File(uri);
+        const base64Audio = await file.base64();
         ws.current.send(JSON.stringify({
           type: 'audio_chunk',
           audio_b64: base64Audio
@@ -159,6 +259,12 @@ const ConsultationScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
+      {isReconnecting && (
+        <View style={styles.reconnectBanner}>
+          <ActivityIndicator size="small" color="#fff" />
+          <Text style={styles.reconnectText}>Connection lost. Reconnecting...</Text>
+        </View>
+      )}
       <View style={styles.videoSection}>
         <CameraView ref={cameraRef} style={styles.camera} facing="front" />
         <View style={styles.metricsOverlay}>
@@ -176,25 +282,38 @@ const ConsultationScreen = ({ route, navigation }) => {
       </View>
 
       <View style={styles.interactionSection}>
-        <ScrollView style={styles.chatArea}>
-          {messages.map((m, i) => (
-            <View key={i} style={[styles.msgWrapper, m.role === 'bot' ? styles.botMsg : styles.patientMsg]}>
-              <View style={[styles.bubble, m.role === 'bot' ? styles.botBubble : styles.patientBubble]}>
-                <Text style={styles.msgText}>{m.text}</Text>
+        <ScrollView
+          ref={chatScrollRef}
+          style={styles.chatArea}
+          showsVerticalScrollIndicator={false}
+        >
+          {messages.map((m, i) => {
+            if (m.role === 'status') {
+              return (
+                <View key={i} style={styles.statusRow}>
+                  <Text style={styles.statusRowText}>{m.text}</Text>
+                </View>
+              );
+            }
+            return (
+              <View key={i} style={[styles.msgWrapper, m.role === 'bot' ? styles.botMsg : styles.patientMsg]}>
+                <View style={[styles.bubble, m.role === 'bot' ? styles.botBubble : styles.patientBubble]}>
+                  <Text style={styles.msgText}>{m.text}</Text>
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
           {isAiSpeaking && (
             <View style={styles.botMsg}>
               <AnimatedWaveform active color={Colors.indigo} />
             </View>
           )}
-          {isAiProcessing && (
-            <View style={[styles.botMsg, { marginLeft: 20, marginVertical: 10 }]}>
-              <ActivityIndicator color={Colors.indigo} />
-            </View>
-          )}
+          {/* spacer so banner doesn't overlap last message */}
+          <View style={{ height: 8 }} />
         </ScrollView>
+
+        {/* Animated status banner */}
+        <AIStatusBanner phase={currentPhase} />
 
         <View style={styles.symptomsTray}>
           <View style={styles.trayHeader}>
@@ -263,6 +382,10 @@ const styles = StyleSheet.create({
   mutedBtn: { backgroundColor: 'rgba(255,255,255,0.1)' },
   endBtn: { backgroundColor: 'rgba(244,63,94,0.05)', borderColor: Colors.rose },
   toolIcon: { fontSize: 20 },
+  reconnectBanner: { backgroundColor: Colors.rose, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 10, position: 'absolute', top: 0, left: 0, right: 0, zIndex: 100 },
+  reconnectText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+  statusRow: { alignSelf: 'center', marginVertical: 6, backgroundColor: 'rgba(99,102,241,0.08)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 5, borderWidth: 1, borderColor: 'rgba(99,102,241,0.18)' },
+  statusRowText: { color: Colors.textSecondary, fontSize: 11, fontStyle: 'italic' },
 });
 
 export default ConsultationScreen;

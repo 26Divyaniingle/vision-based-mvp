@@ -1,9 +1,11 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// ── Change this to your machine's LAN IP when testing on a physical device ──
-export const BASE_URL = 'http://10.17.228.29:8000'; // Machine LAN IP
-export const WS_BASE = 'ws://10.17.228.29:8000';
+// Use EXPO_PUBLIC_API_URL from .env file. If not set, fallback to previous IP for development.
+const envBaseUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.17.228.29:8000';
+export const BASE_URL = envBaseUrl;
+export const WS_BASE = envBaseUrl.replace('http', 'ws');
+
 
 const client = axios.create({
   baseURL: BASE_URL,

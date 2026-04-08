@@ -60,4 +60,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default AnimatedWaveform;
+export default React.memo(AnimatedWaveform);
+

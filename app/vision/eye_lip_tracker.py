@@ -8,25 +8,36 @@ try:
 except Exception:
     mp_face_mesh = None
 
+# Global instance for reuse
+_face_mesh = None
+
+def get_face_mesh():
+    global _face_mesh
+    if _face_mesh is None and mp_face_mesh:
+        _face_mesh = mp_face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1)
+    return _face_mesh
+
+
 def extract_vision_features(image_base64: str) -> dict:
     # A simplified mediapipe extraction for eye_strain (based on EAR) and lip_tension
     nparr = np.frombuffer(base64.b64decode(image_base64), np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     
-    if mp_face_mesh:
+    face_mesh = get_face_mesh()
+    if face_mesh:
         try:
-            with mp_face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1) as face_mesh:
-                results = face_mesh.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-                if not results.multi_face_landmarks:
-                    return {"eye_strain_score": 0.0, "lip_tension": 0.0, "blink_count": 0}
-                
-                return {
-                    "eye_strain_score": 0.65, # Mock value representing some strain
-                    "lip_tension": 0.40,
-                    "blink_count": 0 # Not tracking across time in a snapshot
-                }
+            results = face_mesh.process(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+            if not results.multi_face_landmarks:
+                return {"eye_strain_score": 0.0, "lip_tension": 0.0, "blink_count": 0}
+            
+            return {
+                "eye_strain_score": 0.65, # Mock value representing some strain
+                "lip_tension": 0.40,
+                "blink_count": 0 # Not tracking across time in a snapshot
+            }
         except Exception as e:
             print("MediaPipe FaceMesh error:", e)
+
 
     # Fallback if mediapipe is not available or fails
     return {

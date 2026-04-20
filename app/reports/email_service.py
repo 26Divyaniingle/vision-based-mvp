@@ -34,7 +34,7 @@ def send_otp_email(to_email: str, otp: str, patient_name: str = "Patient") -> bo
             server.starttls()
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
-        print(f"✅ OTP sent to {to_email}")
+        print(f"OTP sent successfully to {to_email}")
         return True
     except Exception as e:
         print(f"OTP email failed: {e}")
@@ -60,11 +60,12 @@ def send_report_email(to_email: str, pdf_bytes: bytes, patient_name: str="Patien
         msg.add_attachment(pdf_bytes, maintype='application', subtype='pdf', filename='Medical_Report.pdf')
 
         with smtplib.SMTP(smtp_server, smtp_port) as server:
+            # server.set_debuglevel(1) 
             server.starttls()
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
             
-        print(f"✅ Report sent to {to_email}")
+        print(f"Report sent successfully to {to_email}")
         return True
     except Exception as e:
         print(f"Failed to send email: {e}")

@@ -14,14 +14,18 @@ async def lifespan(app: FastAPI):
     # Pre-load models in background to not block app startup too much
     print("Pre-loading models...")
     try:
-        # Pre-load NER (This downloads model if not present, take some time)
-        await asyncio.to_thread(get_ner_pipeline)
-        
         # Pre-load DeepFace (Trigger dummy analysis)
         dummy_img = np.zeros((100, 100, 3), dtype=np.uint8)
         _, buffer = cv2.imencode('.jpg', dummy_img)
         dummy_b64 = base64.b64encode(buffer).decode('utf-8')
+        
+        # Pre-load DeepFace Emotion
         await asyncio.to_thread(analyze_emotion, dummy_b64)
+        
+        # Pre-load DeepFace Facenet (for face recognition)
+        # This prevents the first login/register from timing out
+        from app.vision.face_recognition import get_face_embedding
+        await asyncio.to_thread(get_face_embedding, dummy_b64)
         print("Models pre-loaded successfully.")
     except Exception as e:
         print(f"Error pre-loading models: {e}")

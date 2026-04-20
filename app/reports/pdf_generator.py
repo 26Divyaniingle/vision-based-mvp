@@ -3,103 +3,178 @@ import io
 
 def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient") -> bytes:
     pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(15, 15, 15)
     pdf.add_page()
     
     # Header Branding
     pdf.set_fill_color(15, 12, 41) # Dark Blue theme from UI
+    # Reset X to 0 for full-width rect, then restore margins
     pdf.rect(0, 0, 210, 40, 'F')
     
+    pdf.set_y(10)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("helvetica", "B", 20)
-    pdf.cell(0, 15, "MEDICAL CONSULTATION REPORT", ln=True, align="C")
+    pdf.cell(0, 15, "MEDICAL CONSULTATION REPORT", ln=1, align="C")
     pdf.set_font("helvetica", "", 10)
-    pdf.cell(0, 5, "Powered by Vision Agentic AI & MedGemma", ln=True, align="C")
-    pdf.ln(15)
+    pdf.cell(0, 5, "Powered by Vision Agentic AI & MedGemma", ln=1, align="C")
+    pdf.ln(10)
     
     # Body Text Color
     pdf.set_text_color(0, 0, 0)
+    pdf.set_y(45) # Move below header
     
     # Patient Info Header
     pdf.set_font("helvetica", "B", 12)
-    pdf.set_fill_color(230, 230, 230)
-    pdf.cell(0, 10, f"  Patient: {patient_name}", ln=True, fill=True)
+    pdf.set_fill_color(240, 240, 240)
+    pdf.cell(0, 10, f" Patient: {patient_name}", ln=1, fill=True)
     
     import datetime
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     pdf.set_font("helvetica", "I", 9)
-    pdf.cell(0, 8, f"Report Generated: {now}", ln=True)
-    pdf.ln(5)
+    pdf.cell(0, 8, f"Report Generated: {now}", ln=1)
+    pdf.ln(3)
     
-    v = session_data.get("vision", {})
-    ai = session_data.get("ai_results", {})
-    symptoms = session_data.get("symptoms", "No symptoms described.")
+    v = session_data.get("vision") or session_data.get("emotion_metrics") or {}
     
-    # Correcting vision keys to match FastAPI backend (routes_ws.py / latest_emotion_metrics)
+    # Standardize data access for flatter structures
+    condition = session_data.get("condition", "Unknown")
+    confidence = session_data.get("confidence", 0)
+    symptoms = session_data.get("symptoms", ["No specific symptoms noted"])
+    if isinstance(symptoms, list): symptoms = ", ".join([str(s) for s in symptoms])
+    
+    med_data = session_data.get("medication", {})
+    if isinstance(med_data, str):
+        import json
+        try:
+            med_data = json.loads(med_data.replace("'", '"'))
+        except:
+            med_data = {}
+
+    if not isinstance(v, dict):
+        v = {}
+
     emotion = v.get('dominant_emotion', v.get('emotion', 'Neutral'))
     eye_strain = v.get('avg_eye_strain', v.get('eye_strain_score', 0))
     lip_tension = v.get('avg_lip_tension', v.get('lip_tension', 0))
 
-    pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 10, f"Reported Symptoms:", ln=True)
-    pdf.set_font("helvetica", "", 11)
-    pdf.multi_cell(0, 7, symptoms)
-    pdf.ln(5)
-    
-    pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 10, "Bio-Visual Analysis", ln=True)
-    pdf.set_font("helvetica", "", 12)
-    pdf.cell(0, 8, f"- Dominant Emotion: {str(emotion).title()}", ln=True)
-    pdf.cell(0, 8, f"- Eye Strain Score: {float(eye_strain):.2f}", ln=True)
-    pdf.cell(0, 8, f"- Lip Tension Score: {float(lip_tension):.2f}", ln=True)
-    
-    pdf.ln(5)
-    pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 10, "MedGemma AI Diagnosis & Care Plan", ln=True)
-    pdf.set_font("helvetica", "", 12)
-    pdf.multi_cell(0, 10, f"Predicted Condition: {ai.get('condition', 'Unknown')}")
-    pdf.cell(0, 10, f"Probability/Confidence: {ai.get('confidence', 0)*100:.1f}%", ln=True)
-    
-    # Process possible list outcomes from LLM
-    meds = ai.get('medication', 'No medication provided.')
-    if isinstance(meds, list): meds = "\n".join([f"• {m}" for m in meds])
-    
-    prev = ai.get('prevention', 'Maintain standard health precautions.')
-    if isinstance(prev, list): prev = "\n".join([f"• {p}" for p in prev])
+    try:
+        eye_strain = float(eye_strain)
+    except (ValueError, TypeError):
+        eye_strain = 0.0
+    try:
+        lip_tension = float(lip_tension)
+    except (ValueError, TypeError):
+        lip_tension = 0.0
 
-    pdf.ln(5)
-    pdf.set_font("helvetica", "B", 11)
-    pdf.cell(0, 8, "Recommended Remedies:", ln=True)
-    pdf.set_font("helvetica", "", 11)
-    pdf.multi_cell(0, 7, meds)
-    
-    pdf.ln(5)
-    pdf.set_font("helvetica", "B", 11)
-    pdf.cell(0, 8, "Preventive Measures & Lifestyle Advice:", ln=True)
-    pdf.set_font("helvetica", "", 11)
-    pdf.multi_cell(0, 7, prev)
-    
-    pdf.ln(5)
-    pdf.set_font("helvetica", "B", 11)
-    pdf.cell(0, 8, "Ayurvedic & Wellness Advice:", ln=True)
-    pdf.set_font("helvetica", "", 11)
-    ayur = ai.get('ayurvedic', 'Consult an ayurvedic expert.')
-    if isinstance(ayur, list): ayur = "\n".join([f"• {a}" for a in ayur])
-    pdf.multi_cell(0, 7, ayur)
+    def clean_text(text):
+        """Strip non-latin-1 characters to prevent FPDF crash."""
+        if not text: return ""
+        # Handle cases where text might be objects
+        text_str = str(text)
+        return text_str.encode('latin-1', 'replace').decode('latin-1')
 
-    pdf.ln(10)
+    # Symptoms section
     pdf.set_font("helvetica", "B", 12)
-    pdf.cell(0, 10, "Safety & Compliance Status: ", ln=False)
+    pdf.cell(0, 10, "Reported Symptoms:", ln=1)
+    pdf.set_font("helvetica", "", 11)
+    pdf.multi_cell(pdf.epw, 7, clean_text(symptoms))
+    pdf.ln(3)
     
-    if ai.get('safety_passed'):
-        pdf.set_text_color(0, 128, 0)
-        pdf.cell(0, 10, "PASSED - Safe for Home Care", ln=True)
+    # Bio-Visual
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(0, 10, "Bio-Visual Analysis", ln=1)
+    pdf.set_font("helvetica", "", 11)
+    # Using specific widths for label/value helps alignment
+    col_w = 45
+    pdf.cell(col_w, 8, "Dominant Emotion:", ln=0)
+    pdf.cell(0, 8, clean_text(str(emotion).title()), ln=1)
+    
+    pdf.cell(col_w, 8, "Eye Strain Score:", ln=0)
+    pdf.cell(0, 8, f"{eye_strain:.2f}", ln=1)
+    
+    pdf.cell(col_w, 8, "Lip Tension Score:", ln=0)
+    pdf.cell(0, 8, f"{lip_tension:.2f}", ln=1)
+    
+    pdf.ln(3)
+    # Diagnosis
+    pdf.set_font("helvetica", "B", 12)
+    pdf.cell(0, 10, "MedGemma AI Diagnosis & Care Plan", ln=1)
+    
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(40, 8, "Condition:", ln=0)
+    pdf.set_font("helvetica", "", 11)
+    pdf.multi_cell(0, 8, clean_text(condition))
+    
+    try:
+        conf_val = float(confidence) * 100
+    except (ValueError, TypeError):
+        conf_val = 0.0
+    
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(40, 8, "Confidence:", ln=0)
+    pdf.set_font("helvetica", "", 11)
+    pdf.cell(0, 8, f"{conf_val:.1f}%", ln=1)
+    
+    # Medication
+    allopathic = med_data.get("allopathic", []) if isinstance(med_data, dict) else []
+    ayurvedic = med_data.get("ayurvedic", []) if isinstance(med_data, dict) else []
+    prevention = session_data.get("prevention", [])
+
+    pdf.ln(3)
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(0, 8, "Allopathic Recommendations (Modern Medicine):", ln=1)
+    pdf.set_font("helvetica", "", 10)
+    if allopathic:
+        for m in allopathic:
+            name = m.get('name', 'N/A')
+            dosage = m.get('dosage', 'N/A')
+            instr = m.get('instruction', 'N/A')
+            pdf.multi_cell(pdf.epw, 6, clean_text(f"  - {name}: {dosage} ({instr})"))
     else:
-        pdf.set_text_color(255, 0, 0)
-        pdf.cell(0, 10, "STRICT WARNING - CONSULT DOCTOR IMMEDIATELY", ln=True)
+        pdf.cell(0, 7, "  - None provided.", ln=1)
+    
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(0, 8, "Ayurvedic & Wellness Advice:", ln=1)
+    pdf.set_font("helvetica", "", 10)
+    if ayurvedic:
+        for a in ayurvedic:
+            remedy = a.get('remedy', 'N/A')
+            benefit = a.get('benefit', 'N/A')
+            pdf.multi_cell(pdf.epw, 6, clean_text(f"  - {remedy}: {benefit}"))
+    else:
+        pdf.cell(0, 7, "  - None provided.", ln=1)
+
+    pdf.ln(2)
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(0, 8, "Preventive Measures:", ln=1)
+    pdf.set_font("helvetica", "", 10)
+    if isinstance(prevention, list):
+        for line in prevention:
+            pdf.multi_cell(pdf.epw, 6, clean_text(f"  - {line}"))
+    else:
+        pdf.multi_cell(pdf.epw, 6, clean_text(prevention))
+    
+    # Safety Check
+    pdf.ln(5)
+    pdf.set_font("helvetica", "B", 11)
+    pdf.cell(60, 10, "Safety & Compliance Status: ", ln=0)
+    
+    safety_val = session_data.get('safety_check_passed', session_data.get('safety_passed', True))
+    if safety_val:
+        pdf.set_text_color(0, 100, 0)
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(0, 10, "PASSED - Safe for Home Care", ln=1)
+    else:
+        pdf.set_text_color(200, 0, 0)
+        pdf.set_font("helvetica", "B", 11)
+        pdf.cell(0, 10, "STRICT WARNING - CONSULT DOCTOR IMMEDIATELY", ln=1)
         
     pdf.set_text_color(0, 0, 0) # reset
-    pdf.ln(10)
+    pdf.ln(5)
     pdf.set_font("helvetica", "I", 8)
-    pdf.multi_cell(0, 5, "Disclaimer: This report is generated by an AI assistant for pre-consultation information only. It does not replace professional medical advice.")
+    pdf.set_text_color(100, 100, 100)
+    pdf.multi_cell(pdf.epw, 4, "Disclaimer: This report is generated by an AI assistant for pre-consultation information only. It does not replace professional medical advice. If your symptoms worsen, seek immediate medical attention.")
     
-    return bytearray(pdf.output())
+    return bytes(pdf.output())

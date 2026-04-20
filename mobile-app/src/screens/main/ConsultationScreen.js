@@ -212,8 +212,13 @@ const ConsultationScreen = ({ route, navigation }) => {
       await file.write(base64Audio, { encoding: 'base64' });
       
       if (player && !player.isReleased) {
-        player.replace(file.uri);
-        player.play();
+        // Ensure player is ready before calling replace
+        try {
+          player.replace(file.uri);
+          player.play();
+        } catch (err) {
+          console.warn('AudioPlayer.replace failed temporarily:', err);
+        }
       }
     } catch (e) {
       console.error('Error in playTTS:', e);
@@ -287,7 +292,7 @@ const ConsultationScreen = ({ route, navigation }) => {
           style={styles.chatArea}
           showsVerticalScrollIndicator={false}
         >
-          {messages.map((m, i) => {
+          {(messages || []).map((m, i) => {
             if (m.role === 'status') {
               return (
                 <View key={i} style={styles.statusRow}>
@@ -321,7 +326,7 @@ const ConsultationScreen = ({ route, navigation }) => {
             <Text style={styles.trayTitle}>Detected Symptoms</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {symptoms.map(s => (
+            {(symptoms || []).map(s => (
               <View key={s} style={styles.symptomBadge}>
                 <Text style={styles.symptomText}>{s}</Text>
               </View>

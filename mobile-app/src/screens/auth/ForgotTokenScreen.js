@@ -17,6 +17,11 @@ const ForgotTokenScreen = ({ navigation }) => {
 
   const handleSendOTP = async () => {
     if (!email) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
     setIsProcessing(true);
     try {
       const res = await sendOTP(email);
@@ -73,34 +78,42 @@ const ForgotTokenScreen = ({ navigation }) => {
       <Text style={styles.title}>Recovery</Text>
       <Text style={styles.subtitle}>{step === 3 ? 'Biometric Update' : 'Access Restoration'}</Text>
 
-      <GlassCard style={styles.card}>
-        {step === 1 && (
-          <View>
-            <View style={styles.iconCircle}><Mail color={Colors.indigo} size={32} /></View>
-            <Text style={styles.label}>Verified Email</Text>
-            <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Enter your email" placeholderTextColor={Colors.textMuted} autoCapitalize="none" />
-            <PrimaryButton title={isProcessing ? "Sending..." : "Send OTP"} onPress={handleSendOTP} style={{ marginTop: 25 }} />
-          </View>
-        )}
-        {step === 2 && (
-          <View>
-            <View style={styles.iconCircle}><Shield color={Colors.indigo} size={32} /></View>
-            <Text style={styles.label}>6-Digit Verification Code</Text>
-            <TextInput style={styles.input} value={otp} onChangeText={setOtp} keyboardType="numeric" placeholder="XXXXXX" placeholderTextColor={Colors.textMuted} maxLength={6} />
-            <PrimaryButton title={isProcessing ? "Verifying..." : "Verify Code"} onPress={handleVerifyOTP} style={{ marginTop: 25 }} />
-          </View>
-        )}
-        {step === 3 && (
-          <View>
-            <View style={styles.cameraWrapper}>
-               <CameraView ref={cameraRef} style={styles.camera} facing="front" />
-               <View style={styles.cameraOverlay} />
+      {(!permission || !permission.granted) && step === 3 ? (
+        <View style={styles.permBox}>
+           <Shield color={Colors.indigo} size={48} style={{ marginBottom: 10 }} />
+           <Text style={styles.permText}>MediSense needs camera access to recapture your biometric profile.</Text>
+           <PrimaryButton title="Grant Access" onPress={requestPermission} />
+        </View>
+      ) : (
+        <GlassCard style={styles.card}>
+          {step === 1 && (
+            <View style={{ width: '100%', alignItems: 'center' }}>
+              <View style={styles.iconCircle}><Mail color={Colors.indigo} size={32} /></View>
+              <Text style={styles.label}>Verified Email</Text>
+              <TextInput style={styles.input} value={email} onChangeText={setEmail} placeholder="Enter your email" placeholderTextColor={Colors.textMuted} autoCapitalize="none" />
+              <PrimaryButton title={isProcessing ? "Sending..." : "Send OTP"} onPress={handleSendOTP} style={{ marginTop: 25, width: '100%' }} />
             </View>
-            <Text style={styles.hint}>Capture a new face embedding to restore your biometric login.</Text>
-            <PrimaryButton title={isProcessing ? "Updating..." : "Recapture Face"} onPress={handleReRegister} style={{ marginTop: 25 }} />
-          </View>
-        )}
-      </GlassCard>
+          )}
+          {step === 2 && (
+            <View style={{ width: '100%', alignItems: 'center' }}>
+              <View style={styles.iconCircle}><Shield color={Colors.indigo} size={32} /></View>
+              <Text style={styles.label}>6-Digit Verification Code</Text>
+              <TextInput style={styles.input} value={otp} onChangeText={setOtp} keyboardType="numeric" placeholder="XXXXXX" placeholderTextColor={Colors.textMuted} maxLength={6} />
+              <PrimaryButton title={isProcessing ? "Verifying..." : "Verify Code"} onPress={handleVerifyOTP} style={{ marginTop: 25, width: '100%' }} />
+            </View>
+          )}
+          {step === 3 && (
+            <View style={{ width: '100%' }}>
+              <View style={styles.cameraWrapper}>
+                 <CameraView ref={cameraRef} style={styles.camera} facing="front" />
+                 <View style={styles.cameraOverlay} />
+              </View>
+              <Text style={styles.hint}>Capture a new face embedding to restore your biometric login.</Text>
+              <PrimaryButton title={isProcessing ? "Updating..." : "Recapture Face"} onPress={handleReRegister} style={{ marginTop: 25 }} />
+            </View>
+          )}
+        </GlassCard>
+      )}
     </View>
   );
 };
@@ -118,6 +131,8 @@ const styles = StyleSheet.create({
   camera: { flex: 1 },
   cameraOverlay: { ...StyleSheet.absoluteFillObject, borderWidth: 1, borderColor: Colors.indigo, borderRadius: 20, opacity: 0.4 },
   hint: { color: Colors.textSecondary, textAlign: 'center', fontSize: 13, lineHeight: 20 },
+  permBox: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 20 },
+  permText: { color: Colors.textSecondary, textAlign: 'center', fontSize: 15, lineHeight: 22 },
 });
 
 export default ForgotTokenScreen;

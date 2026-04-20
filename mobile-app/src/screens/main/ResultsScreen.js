@@ -1,28 +1,42 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Share } from 'react-native';
-import { FileText, Share2, Pill, Leaf, CheckCircle, AlertTriangle, Home, Download } from 'lucide-react-native';
+import { FileText, Share2, Pill, Leaf, CheckCircle, AlertTriangle, Home, Download, Mail } from 'lucide-react-native';
 import { Colors, Typography, Spacing, Radii, Shadows } from '../../theme';
 import GlassCard from '../../components/GlassCard';
 import PrimaryButton from '../../components/PrimaryButton';
-import { generatePDF } from '../../api/report';
+import { generatePDF, emailPDF } from '../../api/report';
+import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Linking, TextInput } from 'react-native';
+import { useState } from 'react';
+import { BASE_URL } from '../../api/client';
 
 const ResultsScreen = ({ route, navigation }) => {
   const { diagnosis, sessionId } = route.params;
   const [activeTab, setActiveTab] = useState('allopathic');
+  const [email, setEmail] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   const handleExport = async () => {
+    const url = `${BASE_URL}/report/generate_pdf?session_id=${sessionId}`;
+    Linking.openURL(url).catch(err => {
+        Alert.alert('Error', 'Unable to open browser to download PDF.');
+    });
+  };
+
+  const handleEmail = async () => {
+    if (!email || !email.includes('@')) {
+        Alert.alert('Invalid Email', 'Please enter a valid email address.');
+        return;
+    }
+    setIsSending(true);
     try {
-      const res = await generatePDF(sessionId);
-      if (res.data.pdf_url) {
-        Alert.alert('Report Ready', 'Exported successfully. Open report?', [
-          { text: 'Share', onPress: () => Share.share({ url: res.data.pdf_url, message: 'MediSense Medical Report' }) },
-          { text: 'Close' }
-        ]);
-      } else {
-        Alert.alert('Error', 'Server failed to generate PDF.');
-      }
+        const res = await emailPDF(sessionId, email);
+        if (res.data.success) {
+            Alert.alert('Success', 'Medical report has been sent to your email.');
+        } else {
+            Alert.alert('Error', res.data.msg || 'Failed to send email.');
+        }
     } catch (e) {
-      Alert.alert('Export Failed', 'Unable to reach the server.');
+        Alert.alert('Error', 'Server unreachable.');
+    } finally {
+        setIsSending(false);
     }
   };
 
@@ -67,7 +81,7 @@ const ResultsScreen = ({ route, navigation }) => {
         <GlassCard style={styles.medCard}>
           {activeTab === 'allopathic' ? (
             <View>
-              {diagnosis.medication.allopathic.map((m, i) => (
+              {(diagnosis?.medication?.allopathic || []).map((m, i) => (
                 <View key={i} style={styles.medItem}>
                   <Text style={styles.medTitle}>{m.name}</Text>
                   <Text style={styles.medDesc}>{m.dosage} • {m.instruction}</Text>
@@ -76,7 +90,7 @@ const ResultsScreen = ({ route, navigation }) => {
             </View>
           ) : (
             <View>
-               {diagnosis.medication.ayurvedic.map((m, i) => (
+               {(diagnosis?.medication?.ayurvedic || []).map((m, i) => (
                 <View key={i} style={styles.medItem}>
                   <Text style={styles.medTitle}>{m.remedy}</Text>
                   <Text style={styles.medDesc}>{m.benefit}</Text>
@@ -84,6 +98,28 @@ const ResultsScreen = ({ route, navigation }) => {
               ))}
             </View>
           )}
+        </GlassCard>
+
+        <GlassCard style={styles.emailCard}>
+            <Text style={styles.emailLabel}>Get Report via Email</Text>
+            <View style={styles.emailRow}>
+                <TextInput 
+                    style={styles.emailInput}
+                    placeholder="your@email.com"
+                    placeholderTextColor={Colors.textMuted}
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                />
+                <TouchableOpacity 
+                    style={[styles.emailBtn, isSending && { opacity: 0.6 }]} 
+                    onPress={handleEmail}
+                    disabled={isSending}
+                >
+                    <Mail color="#fff" size={18} />
+                </TouchableOpacity>
+            </View>
         </GlassCard>
 
         <View style={styles.actions}>
@@ -126,6 +162,11 @@ const styles = StyleSheet.create({
   medItem: { marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   medTitle: { color: Colors.emerald, fontSize: 17, fontWeight: 'bold', marginBottom: 4 },
   medDesc: { color: Colors.textSecondary, fontSize: 14, lineHeight: 20 },
+  emailCard: { padding: 20, marginBottom: 20, backgroundColor: 'rgba(255,255,255,0.02)' },
+  emailLabel: { color: Colors.textSecondary, fontSize: 12, fontWeight: 'bold', marginBottom: 12, textTransform: 'uppercase' },
+  emailRow: { flexDirection: 'row', gap: 10 },
+  emailInput: { flex: 1, height: 48, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, paddingHorizontal: 15, color: '#fff', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  emailBtn: { width: 48, height: 48, backgroundColor: Colors.indigo, borderRadius: 12, justifyContent: 'center', alignItems: 'center', ...Shadows.glow },
   actions: { gap: 15 },
   exportBtn: { ...Shadows.glow },
   homeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 15, marginTop: 10 },

@@ -9,7 +9,7 @@ export const WS_BASE = envBaseUrl.replace('http', 'ws');
 
 const client = axios.create({
   baseURL: BASE_URL,
-  timeout: 15000,
+  timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 });
 

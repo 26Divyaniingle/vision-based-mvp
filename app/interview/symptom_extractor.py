@@ -6,7 +6,7 @@ import json
 from app.core.llm_engine import generate_response
 
 
-def extract_symptoms_from_response(patient_answer: str, question_context: str, previous_symptoms: list) -> dict:
+async def extract_symptoms_from_response(patient_answer: str, question_context: str, previous_symptoms: list) -> dict:
     """
     Extract symptoms and medical info from the patient's spoken/typed answer.
     Returns structured data about what was mentioned.
@@ -32,7 +32,7 @@ Extract and return ONLY a valid JSON object with these keys:
 
 Be precise and only extract what the patient actually said. Do not invent information."""
 
-    resp = generate_response(prompt)
+    resp = await generate_response(prompt)
     try:
         if "```json" in resp:
             resp = resp.split("```json")[1].split("```")[0].strip()
@@ -52,7 +52,7 @@ Be precise and only extract what the patient actually said. Do not invent inform
         }
 
 
-def generate_follow_up_question(conversation_history: list, extracted_symptoms: list, vision_summary: dict) -> str:
+async def generate_follow_up_question(conversation_history: list, extracted_symptoms: list, vision_summary: dict) -> str:
     """
     Generate a contextual follow-up question based on the conversation so far
     and the vision analysis observations.
@@ -78,5 +78,5 @@ gently ask about those observations.
 
 Return ONLY the question text, nothing else. Keep it conversational and caring."""
 
-    resp = generate_response(prompt)
+    resp = await generate_response(prompt)
     return resp.strip().strip('"')

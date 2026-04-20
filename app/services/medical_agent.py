@@ -5,7 +5,7 @@ Combines logic from condition_agent, medication_agent, and FAISS store.
 """
 from app.agents.supervisor_agent import run_agentic_workflow
 
-def predict_condition(symptoms: list, vision_metrics: dict, conversation_history: list) -> dict:
+async def predict_condition(symptoms: list, vision_metrics: dict, conversation_history: list) -> dict:
     """
     Consolidates the extracted data into a diagnosis and care plan.
     It calls the existing agentic workflow.
@@ -24,5 +24,5 @@ def predict_condition(symptoms: list, vision_metrics: dict, conversation_history
         "lip_tension": vision_metrics.get("avg_lip_tension", 0.0)
     }
 
-    result = run_agentic_workflow(form_data, features)
+    result = await run_agentic_workflow(form_data, features)
     return result

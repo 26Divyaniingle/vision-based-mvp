@@ -1,8 +1,13 @@
 import google.generativeai as genai
 import openai
-import requests
+import httpx
 import json
+import asyncio
 from app.config import settings
+
+# Global async client for connection pooling
+# This prevents socket exhaustion (WinError 10055) on Windows
+ASYNC_CLIENT = httpx.AsyncClient(timeout=30.0)
 
 # Configure Google AI
 if settings.GEMINI_API_KEY:
@@ -15,7 +20,7 @@ if settings.OPENAI_API_KEY:
 # Initialize Gemini Model once at module level for speed
 from app.utils.key_manager import gemini_manager
 
-def try_groq_response(prompt: str) -> str:
+async def try_groq_response(prompt: str) -> str:
     """Fallback to Groq API using Llama 3."""
     if not settings.GROQ_API_KEY:
         return None
@@ -32,7 +37,7 @@ def try_groq_response(prompt: str) -> str:
     }
     
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
+        response = await ASYNC_CLIENT.post(url, headers=headers, json=payload)
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"].strip()
         print(f"Groq API Error: {response.status_code} - {response.text}")
@@ -40,7 +45,7 @@ def try_groq_response(prompt: str) -> str:
         print(f"Groq Request failed: {e}")
     return None
 
-def try_ollama_response(prompt: str) -> str:
+async def try_ollama_response(prompt: str) -> str:
     """Fallback to local Ollama instance."""
     if not settings.OLLAMA_BASE_URL:
         return None
@@ -52,14 +57,14 @@ def try_ollama_response(prompt: str) -> str:
         "stream": False
     }
     try:
-        response = requests.post(url, json=payload, timeout=15)
+        response = await ASYNC_CLIENT.post(url, json=payload)
         if response.status_code == 200:
             return response.json().get("response", "").strip()
     except Exception as e:
         print(f"Ollama local fallback failed: {e}")
     return None
 
-def generate_response(prompt: str) -> str:
+async def generate_response(prompt: str) -> str:
     """
     Generates a response with multi-provider fallback:
     Gemini (Rotated) -> Groq (Llama 3) -> OpenAI (GPT-4o) -> Ollama (Local)
@@ -70,7 +75,7 @@ def generate_response(prompt: str) -> str:
         model = gemini_manager.get_model()
         if model:
             try:
-                response = model.generate_content(prompt)
+                response = await asyncio.to_thread(model.generate_content, prompt)
                 return response.text.strip()
             except Exception as e:
                 print(f"Gemini LLM Attempt {attempt + 1} failed: {e}")
@@ -82,7 +87,7 @@ def generate_response(prompt: str) -> str:
 
     # 2. Try Groq (Fast, Free tier usually available)
     print("Falling back to Groq...")
-    groq_res = try_groq_response(prompt)
+    groq_res = await try_groq_response(prompt)
     if groq_res:
         return groq_res
 
@@ -90,8 +95,9 @@ def generate_response(prompt: str) -> str:
     if settings.OPENAI_API_KEY:
         print("Falling back to OpenAI...")
         try:
-            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-            response = client.chat.completions.create(
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            response = await client.chat.completions.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7
@@ -102,7 +108,7 @@ def generate_response(prompt: str) -> str:
 
     # 4. Final Fallback: Local Ollama
     print("Final attempt: Ollama Local...")
-    ollama_res = try_ollama_response(prompt)
+    ollama_res = await try_ollama_response(prompt)
     if ollama_res:
         return ollama_res
 

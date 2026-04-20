@@ -4,8 +4,9 @@ from app.agents.medication_agent import suggest_medication
 from app.agents.safety_agent import run_safety_check
 from app.agents.learning_agent import store_session_for_learning
 from app.services.medical_rag_service import MedicalRAGService
+import asyncio
 
-def run_agentic_workflow(form_data: dict, vision_features: dict):
+async def run_agentic_workflow(form_data: dict, vision_features: dict) -> dict:
     symptoms = form_data.get('symptoms', '')
     
     # RAG Layer: Retrieve grounded medical knowledge
@@ -16,31 +17,33 @@ def run_agentic_workflow(form_data: dict, vision_features: dict):
     similar_cases = get_similar_cases(form_data, vision_features.get('emotion', ''))
     
     # Condition Pred (Now with RAG context)
-    condition, conf = predict_condition(form_data, vision_features, similar_cases, rag_context)
+    condition, conf = await predict_condition(form_data, vision_features, similar_cases, rag_context)
     
     # Medication & Prevention (Now with RAG context)
-    med_res = suggest_medication(condition, form_data, rag_context)
-    meds = med_res.get("medication", "")
-    ayurvedic = med_res.get("ayurvedic", "")
-    prevention = med_res.get("prevention", "")
+    med_res = await suggest_medication(condition, form_data, rag_context)
     
     # Safety
-    safe = run_safety_check(meds)
+    # We check the names of allopathic meds
+    med_names = ", ".join([m.get("name", "") for m in med_res.get("allopathic", [])])
+    safe = await asyncio.to_thread(run_safety_check, med_names)
+    
     if not safe:
-        meds = "Proposed medication failed safety checks. Please consult a doctor directly."
-        ayurvedic = "Please consult a doctor before trying any home remedies."
-        prevention = "Consult a licensed medical professional immediately."
+        med_res["allopathic"] = [{"name": "Safety Check Failed", "dosage": "N/A", "instruction": "Consult a doctor immediately"}]
+        med_res["ayurvedic"] = [{"remedy": "N/A", "benefit": "Seek professional help"}]
+        med_res["prevention"] = ["Immediate medical attention advised."]
     
     # Learning (Store interaction)
-    combined_meds = f"Clinical/Allopathic: {meds} | Ayurvedic: {ayurvedic}"
-    store_session_for_learning(form_data, vision_features, condition, combined_meds)
+    combined_meds_text = f"Condition: {condition} | Meds: {med_names}"
+    store_session_for_learning(form_data, vision_features, condition, combined_meds_text)
     
     return {
         "condition": condition,
         "confidence": conf,
-        "medication": meds,
-        "ayurvedic": ayurvedic,
-        "prevention": prevention,
+        "medication": {
+            "allopathic": med_res.get("allopathic", []),
+            "ayurvedic": med_res.get("ayurvedic", [])
+        },
+        "prevention": med_res.get("prevention", []),
         "safety_passed": safe,
         "similar_cases": similar_cases
     }

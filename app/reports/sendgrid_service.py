@@ -1,4 +1,5 @@
 import os
+import base64
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from app.config import settings
@@ -42,14 +43,15 @@ def send_report_email(to_email: str, pdf_bytes: bytes, patient_name: str="Patien
         print(f"SendGrid credentials not set. Simulated sending to {to_email}")
         return True
     
+    from_email_addr = settings.SMTP_USER or 'noreply@yourapp.com'
     try:
         message = Mail(
-            from_email='noreply@yourapp.com',
+            from_email=from_email_addr,
             to_emails=to_email,
             subject='Your Medical AI Session Report',
             plain_text_content=f'Hello {patient_name},\n\nPlease find attached your Vision Agentic AI session report.\n\nBest,\nVision AI Team',
             attachments=[{
-                "content": pdf_bytes.encode('base64'),
+                "content": base64.b64encode(pdf_bytes).decode(),
                 "filename": "Medical_Report.pdf",
                 "type": "application/pdf",
                 "disposition": "attachment"

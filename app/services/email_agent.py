@@ -2,7 +2,7 @@
 Email and SMS Agent
 Sends reports to email. Optionally notifies via SMS using Twilio.
 """
-from app.reports.sendgrid_service import send_report_email
+from app.reports.email_service import send_report_email
 
 def send_patient_report(email: str, pdf_bytes: bytes, patient_name: str, phone: str = ""):
     """Send report PDF via email and notify via SMS."""

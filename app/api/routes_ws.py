@@ -167,8 +167,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         "type": "processing",
                         "text": "🔬 Mapping clinical markers..."
                     }))
-                    new_symps = await asyncio.to_thread(extract_symptoms_ner, stt_text)
+                    new_symps = await extract_symptoms_ner(stt_text)
                     extracted_symptoms.update(new_symps)
+                    
+                    # Track question count (how many questions did the bot ASK so far)
+                    bot_questions = [m for m in conversation_history if m["role"] == "bot"]
+                    q_count = len(bot_questions)
                     
                     # Generate next question (Offload LLM to thread to keep loop responsive)
                     await websocket.send_text(json.dumps({
@@ -178,7 +182,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     acting_emotion = latest_emotion_metrics["dominant_emotion"]
                     if latest_emotion_metrics["distress_flags"]["pain"]: acting_emotion = "severe pain"
                     
-                    next_q = await asyncio.to_thread(generate_next_question, conversation_history, list(extracted_symptoms), acting_emotion, patient_name=patient_name, language=client_lang)
+                    # Safety check: if we already asked 10 questions, force completion
+                    if q_count >= 10:
+                        next_q = "INTERVIEW_COMPLETE"
+                    else:
+                        next_q = await generate_next_question( 
+                            conversation_history, 
+                            list(extracted_symptoms), 
+                            acting_emotion, 
+                            patient_name=patient_name, 
+                            language=client_lang,
+                            question_count=q_count + 1 # The one we are about to ask
+                        )
 
                     
                     if next_q == "INTERVIEW_COMPLETE":
@@ -188,22 +203,34 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                             "text": "Thank you for sharing. Generating your comprehensive medical analysis..."
                         }))
                         
-                        agent_res = await asyncio.to_thread(predict_condition, list(extracted_symptoms), latest_emotion_metrics, conversation_history)
+                        try:
+                            agent_res = await predict_condition(list(extracted_symptoms), latest_emotion_metrics, conversation_history)
+                        except Exception as e:
+                            print(f"Agentic Workflow Error: {e}")
+                            agent_res = {
+                                "condition": "Diagnostic Timeout", 
+                                "confidence": 0.0, 
+                                "medication": {"allopathic": [], "ayurvedic": []},
+                                "prevention": ["Consult a doctor."]
+                            }
                         
-                        # Save session to SQLite DB
-                        create_session(
-                            db=db,
-                            session_id=session_id,
-                            patient_id=patient_id,
-                            transcript=conversation_history,
-                            symptoms=list(extracted_symptoms),
-                            emotion_metrics=latest_emotion_metrics,
-                            condition=agent_res["condition"],
-                            confidence=agent_res["confidence"],
-                            medication=agent_res["medication"],
-                            safety=int(agent_res["safety_passed"]),
-                            distress=latest_emotion_metrics["distress_flags"]["pain"] or latest_emotion_metrics["distress_flags"]["stress"]
-                        )
+                        # Save session to SQLite DB (Wrapped in try/except)
+                        try:
+                            create_session(
+                                db=db,
+                                session_id=session_id,
+                                patient_id=patient_id,
+                                transcript=conversation_history,
+                                symptoms=list(extracted_symptoms),
+                                emotion_metrics=latest_emotion_metrics,
+                                condition=agent_res.get("condition", "Unknown"),
+                                confidence=agent_res.get("confidence", 0.0),
+                                medication=str(agent_res.get("medication", "")),
+                                safety=int(agent_res.get("safety_passed", 0)),
+                                distress=latest_emotion_metrics["distress_flags"]["pain"] or latest_emotion_metrics["distress_flags"]["stress"]
+                            )
+                        except Exception as db_err:
+                            print(f"DB Update Error during finalize: {db_err}")
                         
                         await websocket.send_text(json.dumps({
                             "type": "finalize",

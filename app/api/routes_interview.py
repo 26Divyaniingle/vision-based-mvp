@@ -52,13 +52,13 @@ def start_interview(req: StartInterviewRequest):
         "session_id": session.session_id,
         "question": first_question,
         "question_number": 1,
-        "total_questions": 9,
+        "total_questions": 10,
         "message": "Interview started successfully. Ask the patient the first question."
     }
 
 
 @router.post("/answer")
-def submit_answer(req: AnswerRequest):
+async def submit_answer(req: AnswerRequest):
     """
     Submit patient's answer to the current question.
     Optionally include a webcam frame for vision analysis.
@@ -84,7 +84,7 @@ def submit_answer(req: AnswerRequest):
             vision_snapshot = {"emotion": "neutral", "eye_strain_score": 0.0, "lip_tension": 0.0}
 
     # Process the answer
-    result = session.process_answer(req.answer_text, vision_snapshot)
+    result = await session.process_answer(req.answer_text, vision_snapshot)
 
     # Include vision summary in response
     vision_summary = session.get_vision_summary()
@@ -93,7 +93,7 @@ def submit_answer(req: AnswerRequest):
         "status": result["status"],
         "next_question": result.get("next_question"),
         "question_number": result.get("question_number", session.current_question_index + 1),
-        "total_questions": result.get("total_questions", 9),
+        "total_questions": result.get("total_questions", 10),
         "symptoms_detected": session.extracted_symptoms,
         "vision_summary": vision_summary,
         "message": result.get("message", "")
@@ -128,7 +128,7 @@ def submit_vision_frame(req: VisionFrameRequest):
 
 
 @router.post("/complete")
-def complete_interview(req: CompleteInterviewRequest, db: DBSession = Depends(get_db)):
+async def complete_interview(req: CompleteInterviewRequest, db: DBSession = Depends(get_db)):
     """
     Complete the interview and run the full agentic diagnosis workflow.
     Returns the final diagnosis, medication, and comprehensive analysis.
@@ -176,7 +176,9 @@ def complete_interview(req: CompleteInterviewRequest, db: DBSession = Depends(ge
     }
 
     # Run the existing agentic workflow
-    ai_result = run_agentic_workflow(form_data, vision_features)
+    ai_result = await run_agentic_workflow(form_data, vision_features)
+    
+    import json
 
     # Save session to database
     try:
@@ -189,7 +191,11 @@ def complete_interview(req: CompleteInterviewRequest, db: DBSession = Depends(ge
             emotion_metrics=vision_features,
             condition=ai_result["condition"],
             confidence=ai_result["confidence"],
-            medication=ai_result["medication"],
+            medication=json.dumps({
+                "allopathic": ai_result["medication"].get("allopathic", []),
+                "ayurvedic": ai_result["medication"].get("ayurvedic", []),
+                "prevention": ai_result.get("prevention", [])
+            }),
             safety=int(ai_result["safety_passed"]),
             distress=vision_summary.get("avg_eye_strain", 0) > 0.7 # Example distress logic
         )
@@ -228,7 +234,7 @@ def get_interview_status(session_id: str):
         "session_id": session.session_id,
         "completed": session.completed,
         "current_question": session.current_question_index + 1,
-        "total_questions": 9,
+        "total_questions": 10,
         "symptoms_detected": session.extracted_symptoms,
         "vision_frames_captured": len(session.vision_frames),
         "vision_summary": session.get_vision_summary()

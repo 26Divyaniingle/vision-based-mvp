@@ -7,24 +7,23 @@ import os
 import io
 import tempfile
 import google.generativeai as genai
+import httpx
 from app.config import settings
 
-# Configure Google AI
-if settings.GEMINI_API_KEY:
-    genai.configure(api_key=settings.GEMINI_API_KEY)
+# Global async client for connection pooling
+ASYNC_CLIENT = httpx.AsyncClient(timeout=30.0)
 
 async def try_groq_stt(audio_bytes: bytes, language: str = "English") -> str:
     """Fallback STT using Groq Whisper API (whisper-large-v3)."""
     if not settings.GROQ_API_KEY:
         return None
     
-    import requests
     url = "https://api.groq.com/openai/v1/audio/transcriptions"
     headers = {
         "Authorization": f"Bearer {settings.GROQ_API_KEY}"
     }
     
-    # Groq expects multipart/form-data. We wrap bytes in a file-like object.
+    # Groq expects multipart/form-data.
     files = {
         "file": ("audio.mp4", audio_bytes, "audio/mp4"),
     }
@@ -42,8 +41,7 @@ async def try_groq_stt(audio_bytes: bytes, language: str = "English") -> str:
     }
     
     try:
-        import asyncio
-        response = await asyncio.to_thread(requests.post, url, headers=headers, files=files, data=data, timeout=20)
+        response = await ASYNC_CLIENT.post(url, headers=headers, files=files, data=data)
         if response.status_code == 200:
             return response.json().get("text", "").strip()
         print(f"Groq STT Error: {response.status_code} - {response.text}")

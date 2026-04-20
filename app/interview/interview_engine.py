@@ -1,12 +1,10 @@
-"""
-Interview Engine - Manages the state machine for the medical interview chatbot.
-Tracks questions, answers, extracted symptoms, and vision analysis across the session.
-"""
 import time
 import uuid
+import asyncio
 from typing import Optional
-from app.interview.question_bank import INTERVIEW_QUESTIONS, get_question_by_index, get_total_questions
-from app.interview.symptom_extractor import extract_symptoms_from_response, generate_follow_up_question
+from app.interview.question_bank import get_question_by_index, get_total_questions
+from app.interview.symptom_extractor import extract_symptoms_from_response
+from app.services.dialogue_manager import generate_next_question
 
 
 # In-memory interview sessions (for MVP; production would use Redis/DB)
@@ -21,37 +19,31 @@ class InterviewSession:
         self.patient_id = patient_id
         self.patient_name = patient_name
         self.current_question_index = 0
-        self.conversation_history = []  # List of {"role": "ai"/"patient", "text": "..."}
+        self.conversation_history = []  # List of {"role": "bot"/"patient", "text": "..."}
         self.extracted_symptoms = []
         self.all_extractions = []  # Raw extraction results per answer
         self.vision_frames = []  # Accumulated vision analysis results
         self.started_at = time.time()
         self.completed = False
         self.follow_up_count = 0
-        self.max_follow_ups = 2  # Max dynamic follow-ups between base questions
+        self.max_follow_ups = 2
+        self.last_asked_question = "Hello! I'm your AI medical assistant. What brings you here today?"
 
-    def get_current_question(self) -> Optional[str]:
+    def get_current_question(self) -> str:
         """Get the current question to ask."""
-        q = get_question_by_index(self.current_question_index)
-        if q:
-            return q["question"]
-        return None
+        return self.last_asked_question
 
-    def process_answer(self, answer_text: str, vision_snapshot: dict = None) -> dict:
+    async def process_answer(self, answer_text: str, vision_snapshot: dict = None) -> dict:
         """
-        Process a patient's answer:
-        1. Record the answer
-        2. Extract symptoms via NLP
-        3. Add vision data
-        4. Determine the next question
+        Process a patient's answer and determine the next dynamic question.
         """
-        current_q = get_question_by_index(self.current_question_index)
-        question_context = current_q["question"] if current_q else "General follow-up"
+        if self.completed:
+            return {"status": "completed", "message": "Interview already completed", "next_question": None}
 
         # Record conversation
         self.conversation_history.append({
-            "role": "ai",
-            "text": question_context
+            "role": "bot",
+            "text": self.last_asked_question
         })
         self.conversation_history.append({
             "role": "patient",
@@ -59,8 +51,8 @@ class InterviewSession:
         })
 
         # Extract symptoms from this answer
-        extraction = extract_symptoms_from_response(
-            answer_text, question_context, self.extracted_symptoms
+        extraction = await extract_symptoms_from_response(
+            answer_text, self.last_asked_question, self.extracted_symptoms
         )
         self.all_extractions.append(extraction)
 
@@ -75,32 +67,53 @@ class InterviewSession:
             self.vision_frames.append(vision_snapshot)
 
         # Determine next action
-        return self._get_next_step(extraction)
+        return await self._get_next_step(extraction)
 
-    def _get_next_step(self, latest_extraction: dict) -> dict:
-        """Determine the next question or signal completion."""
-        total_base = get_total_questions()
-
-        # Check if we've asked all base questions
-        if self.current_question_index >= total_base - 1:
+    async def _get_next_step(self, latest_extraction: dict) -> dict:
+        """Determine the next dynamic question or signal completion."""
+        # Calculate current question count (how many questions has the bot ASKED)
+        questions_asked = len([m for m in self.conversation_history if m["role"] == "bot"])
+        
+        # Hard limits (7-10 questions)
+        if questions_asked >= 10:
             self.completed = True
             return {
                 "status": "completed",
-                "message": "Thank you for answering all the questions. I now have enough information to help you. Let me analyze everything and prepare your assessment.",
+                "message": "Thank you. I have enough information to prepare your assessment.",
                 "next_question": None
             }
 
-        # Move to next base question
-        self.current_question_index += 1
-        self.follow_up_count = 0
+        # Context for dynamic question generation
+        vision_sum = self.get_vision_summary()
+        acting_emotion = vision_sum.get("dominant_emotion", "neutral")
+        
+        # Generate the next question dynamically
+        next_q = await generate_next_question(
+            conversation_history=self.conversation_history,
+            symptoms=self.extracted_symptoms,
+            active_emotion=acting_emotion,
+            patient_name=self.patient_name,
+            question_count=questions_asked + 1
+        )
 
-        next_q = self.get_current_question()
+        if next_q == "INTERVIEW_COMPLETE":
+            self.completed = True
+            return {
+                "status": "completed",
+                "message": "Interview complete. Analyzing results...",
+                "next_question": None
+            }
+
+        # Update state for next turn
+        self.current_question_index += 1
+        self.last_asked_question = next_q
+
         return {
             "status": "continue",
             "next_question": next_q,
             "symptoms_so_far": self.extracted_symptoms,
             "question_number": self.current_question_index + 1,
-            "total_questions": total_base
+            "total_questions": 10
         }
 
     def add_vision_frame(self, vision_data: dict):

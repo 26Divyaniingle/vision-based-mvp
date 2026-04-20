@@ -2,7 +2,7 @@ from .comparison_agent import ComparisonAgent
 from .condition_agent import ConditionAgent
 from .medication_agent import MedicationAgent
 from .safety_agent import SafetyAgent
-from .learning_agent import store_session_for_learning
+from .learning_agent import LearningAgent
 from app.services.medical_rag_service import MedicalRAGService
 import asyncio
 
@@ -12,6 +12,7 @@ class SupervisorAgent:
         self.condition_agent = ConditionAgent()
         self.medication_agent = MedicationAgent()
         self.safety_agent = SafetyAgent()
+        self.learning_agent = LearningAgent()
 
     async def run_workflow(self, form_data: dict, vision_features: dict) -> dict:
         symptoms = form_data.get('symptoms', '')
@@ -42,7 +43,7 @@ class SupervisorAgent:
             med_res["prevention"] = ["Immediate medical attention advised."]
         
         # 6. Learning 
-        store_session_for_learning(form_data, vision_features, condition, f"Condition: {condition}")
+        self.learning_agent.store_session(form_data, vision_features, condition, med_names)
         
         return {
             "condition": condition,

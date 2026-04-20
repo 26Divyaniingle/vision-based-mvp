@@ -1,4 +1,6 @@
 from app.core.safety_rules import is_safe
 
-def run_safety_check(medication: str):
-    return 1 if is_safe(medication) else 0
+class SafetyAgent:
+    def check_safety(self, medication: str) -> bool:
+        """Verify if the medication list is safe to suggest."""
+        return is_safe(medication)

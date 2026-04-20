@@ -1,9 +1,13 @@
+from .base_agent import BaseAgent
 import json
-from app.core.llm_engine import generate_response
 
-async def suggest_medication(condition: str, form_data: dict, rag_context: str) -> dict:
-    prompt = f"""
-You are MedGemma, a clinical medical assistant and ayurvedic wellness expert.
+class MedicationAgent(BaseAgent):
+    def __init__(self):
+        super().__init__(persona="MedGemma, a clinical medical assistant and ayurvedic wellness expert")
+
+    async def suggest_medication(self, condition: str, form_data: dict, rag_context: str) -> dict:
+        prompt = f"""
+You are {self.persona}.
 Condition: {condition}
 Patient Symptoms: {form_data.get('symptoms', '')}
 
@@ -26,19 +30,11 @@ Based on the verified medicines and reference knowledge provided, provide a care
 
 Return ONLY the raw JSON. Strictly choose allopathic medicines from the VERIFIED list if available.
 """
-    resp = (await generate_response(prompt)).strip()
-    try:
-        if "```json" in resp:
-            resp = resp.split("```json")[1].split("```")[0].strip()
-        data = json.loads(resp)
+        resp = await self.get_response(prompt)
+        data = self.parse_json(resp)
+        
         return {
-            "allopathic": data.get("allopathic", []),
-            "ayurvedic": data.get("ayurvedic", []),
-            "prevention": data.get("prevention", ["Maintain rest and hydration."])
-        }
-    except Exception:
-        return {
-            "allopathic": [{"name": "Consult a physician", "dosage": "N/A", "instruction": "For formal prescription"}],
-            "ayurvedic": [{"remedy": "Consult an expert", "benefit": "For customized home remedies"}],
-            "prevention": ["Maintain standard precautions."]
+            "allopathic": data.get("allopathic", [{"name": "Consult a physician", "dosage": "N/A", "instruction": "For formal prescription"}]),
+            "ayurvedic": data.get("ayurvedic", [{"remedy": "Consult an expert", "benefit": "For customized home remedies"}]),
+            "prevention": data.get("prevention", ["Maintain standard precautions."])
         }

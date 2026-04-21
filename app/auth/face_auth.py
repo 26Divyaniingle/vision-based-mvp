@@ -9,7 +9,7 @@ def register_face(db: Session, name: str, image_base64: str, age: int, phone: st
     emb = get_face_embedding(image_base64)
     if not emb:
         return {"success": False, "msg": "No face detected in the image for registration."}
-    token = str(random.randint(100000, 999999))  # Generate 6-digit numeric token
+    token = str(random.randint(100000, 999999))
     patient = create_patient(db, name, token, json.dumps(emb), age, phone, email)
     return {"success": True, "token": token, "name": patient.name, "id": patient.id}
 

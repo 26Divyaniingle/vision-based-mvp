@@ -737,64 +737,6 @@ Every consultation returns comprehensive output:
   "generated_at": "2026-04-21T10:30:00Z"
 }
 ```
-
----
-
-## 🧪 Testing the System
-
-### Test 1: Medical RAG Retrieval
-
-```bash
-python -c "
-from medical_rag.disease_predictor import predict_disease
-from medical_rag.medicine_retriever import retrieve_medicines
-
-# Test symptom → disease
-symptoms = 'high fever, cough, sore throat'
-diseases = predict_disease(symptoms)
-print(f'Predicted diseases: {diseases}')
-
-# Test disease → medicines
-for disease in diseases:
-    medicines = retrieve_medicines(disease)
-    print(f'Medicines for {disease}: {[m[\"name\"] for m in medicines[:3]]}')
-"
-```
-
-### Test 2: Medication Agent
-
-```bash
-python -c "
-import asyncio
-from app.agents.medication_agent import MedicationAgent
-
-async def test():
-    agent = MedicationAgent()
-    result = await agent.suggest_medication(
-        condition='Influenza',
-        form_data={'symptoms': 'fever, cough, fatigue'},
-        rag_context='VERIFIED MEDICINES: Aspirin: pain relief. Paracetamol: fever reduction.'
-    )
-    print(f'Allopathic: {result[\"allopathic\"]}')
-    print(f'Ayurvedic: {result[\"ayurvedic\"]}')
-    print(f'Prevention: {result[\"prevention\"]}')
-
-asyncio.run(test())
-"
-```
-
-### Test 3: Full Workflow
-
-```bash
-# Start backend
-uvicorn app.main:app --reload &
-
-# Test API
-curl -X POST http://localhost:8000/interview/start \
-  -H "Content-Type: application/json" \
-  -d '{"patient_id": "test-123", "session_type": "consultation"}'
-```
-
 ---
 
 ## 🐛 Troubleshooting
@@ -825,22 +767,7 @@ Full Consultation      | 8-12min  | 1 concurrent
 ─────────────────────────────────────────────
 ```
 
----
 
-## 🚀 Future Enhancements
-
-- [ ] Multi-language support (Hindi, Spanish, French)
-- [ ] Advanced drug interaction checker
-- [ ] Pregnancy/lactation safety warnings
-- [ ] Insurance coverage integration
-- [ ] Real-time prescription sync with pharmacy
-- [ ] Genomic medicine support
-- [ ] Mental health screening
-- [ ] Chronic disease management module
-- [ ] Telemedicine doctor integration
-- [ ] Mobile app push notifications
-
----
 
 ## 📝 Contributing
 

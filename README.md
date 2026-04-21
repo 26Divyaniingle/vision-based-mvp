@@ -1,4 +1,4 @@
-# 🏥 Vision-Based Agentic AI Healthcare System (MVP)
+# 🏥 Vision-Based Agentic AI Healthcare System 
 
 > **Advanced multi-modal medical diagnostic AI with RAG-powered medication recommendations, real-time vision analysis, and intelligent agent orchestration.**
 

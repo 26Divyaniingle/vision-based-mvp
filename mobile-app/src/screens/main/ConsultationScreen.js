@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Dimensions, ActivityIndicator, TextInput, Keyboard, KeyboardAvoidingView, Platform } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, requestRecordingPermissionsAsync, RecordingPresets } from 'expo-audio';
 import { File, Paths } from 'expo-file-system';
-import { Mic, MicOff, LogOut, Activity, AlertCircle, MessageSquare } from 'lucide-react-native';
+import { Mic, MicOff, LogOut, Activity, AlertCircle, MessageSquare, Keyboard as KeyboardIcon, Send } from 'lucide-react-native';
 import { Colors, Typography, Spacing, Radii, Shadows } from '../../theme';
 import GlassCard from '../../components/GlassCard';
 import AnimatedWaveform from '../../components/AnimatedWaveform';
@@ -24,6 +24,8 @@ const ConsultationScreen = ({ route, navigation }) => {
   const [isReconnecting, setIsReconnecting] = useState(false);
   // Unified phase for AIStatusBanner: null | 'listening' | 'processing' | 'speaking' | 'finalizing' | 'reconnecting'
   const [currentPhase, setCurrentPhase] = useState(null);
+  const [isTextMode, setIsTextMode] = useState(false);
+  const [textInput, setTextInput] = useState('');
   const reconnectTimeout = useRef(null);
   const reconnectAttempts = useRef(0);
   const heartbeatInterval = useRef(null);
@@ -262,6 +264,19 @@ const ConsultationScreen = ({ route, navigation }) => {
     }
   };
 
+  const sendTextMessage = () => {
+    const msg = textInput.trim();
+    if (!msg) return;
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+      Alert.alert('Not connected', 'Please wait for the connection to be established.');
+      return;
+    }
+    // Send via the existing audio_chunk text-fallback path (no backend change needed)
+    ws.current.send(JSON.stringify({ type: 'audio_chunk', text: msg }));
+    setTextInput('');
+    Keyboard.dismiss();
+  };
+
   return (
     <View style={styles.container}>
       {isReconnecting && (
@@ -286,7 +301,11 @@ const ConsultationScreen = ({ route, navigation }) => {
         </View>
       </View>
 
-      <View style={styles.interactionSection}>
+      <KeyboardAvoidingView
+        style={styles.interactionSection}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
         <ScrollView
           ref={chatScrollRef}
           style={styles.chatArea}
@@ -341,6 +360,31 @@ const ConsultationScreen = ({ route, navigation }) => {
           </View>
         )}
 
+        {/* Text input row — shown when text mode is active */}
+        {isTextMode && (
+          <View style={styles.textInputRow}>
+            <TextInput
+              style={styles.textInputField}
+              placeholder="Type your response here..."
+              placeholderTextColor={Colors.textMuted}
+              value={textInput}
+              onChangeText={setTextInput}
+              multiline
+              maxLength={500}
+              returnKeyType="send"
+              onSubmitEditing={sendTextMessage}
+              blurOnSubmit={false}
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, !textInput.trim() && styles.sendBtnDisabled]}
+              onPress={sendTextMessage}
+              disabled={!textInput.trim()}
+            >
+              <Send color={textInput.trim() ? '#fff' : Colors.textMuted} size={18} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={styles.toolbar}>
            <TouchableOpacity style={[styles.toolBtn, isMuted && styles.mutedBtn]} onPress={() => setIsMuted(!isMuted)}>
             <Text style={styles.toolIcon}>{isMuted ? '🔇' : '🔊'}</Text>
@@ -348,11 +392,17 @@ const ConsultationScreen = ({ route, navigation }) => {
           <TouchableOpacity style={[styles.toolBtn, isMicActive && styles.activeMic]} onPress={() => setIsMicActive(!isMicActive)}>
             {isMicActive ? <Mic color="#fff" /> : <MicOff color={Colors.textSecondary} />}
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toolBtn, isTextMode && styles.activeText]}
+            onPress={() => { setIsTextMode(!isTextMode); setTextInput(''); Keyboard.dismiss(); }}
+          >
+            <KeyboardIcon color={isTextMode ? '#fff' : Colors.textSecondary} size={20} />
+          </TouchableOpacity>
           <TouchableOpacity style={[styles.toolBtn, styles.endBtn]} onPress={() => navigation.goBack()}>
             <LogOut color={Colors.rose} />
           </TouchableOpacity>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </View>
   );
 };
@@ -391,6 +441,11 @@ const styles = StyleSheet.create({
   reconnectText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
   statusRow: { alignSelf: 'center', marginVertical: 6, backgroundColor: 'rgba(99,102,241,0.08)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 5, borderWidth: 1, borderColor: 'rgba(99,102,241,0.18)' },
   statusRowText: { color: Colors.textSecondary, fontSize: 11, fontStyle: 'italic' },
+  activeText: { backgroundColor: Colors.indigo, ...Shadows.glow },
+  textInputRow: { flexDirection: 'row', alignItems: 'flex-end', marginHorizontal: 16, marginBottom: 10, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(99,102,241,0.25)', paddingHorizontal: 14, paddingVertical: 8, gap: 10 },
+  textInputField: { flex: 1, color: '#f1f5f9', fontSize: 15, lineHeight: 22, maxHeight: 100, paddingTop: 0, paddingBottom: 0 },
+  sendBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: Colors.indigo, justifyContent: 'center', alignItems: 'center' },
+  sendBtnDisabled: { backgroundColor: 'rgba(99,102,241,0.2)' },
 });
 
 export default ConsultationScreen;

@@ -3,7 +3,7 @@ import { Colors, Typography, Spacing, Radii, Shadows } from '../../theme';
 import GlassCard from '../../components/GlassCard';
 import PrimaryButton from '../../components/PrimaryButton';
 import { generatePDF, emailPDF } from '../../api/report';
-import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Linking, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Linking, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState } from 'react';
 import { BASE_URL } from '../../api/client';
 
@@ -41,13 +41,16 @@ const ResultsScreen = ({ route, navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <View style={styles.header}>
         <FileText color={Colors.indigo} size={24} />
         <Text style={styles.headerTitle}>Medical Analysis</Text>
       </View>
       
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <GlassCard style={styles.diagnosisCard}>
           <Text style={styles.label}>Potential Condition</Text>
           <Text style={styles.conditionText}>{diagnosis.condition}</Text>
@@ -135,7 +138,7 @@ const ResultsScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

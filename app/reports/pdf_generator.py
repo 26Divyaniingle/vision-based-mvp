@@ -35,25 +35,33 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
         pdf.cell(0, 9, f"  {title}", ln=1, fill=True)
         # underline accent
         pdf.set_draw_color(*BRAND_ACCENT)
-        pdf.line(18, pdf.get_y(), 192, pdf.get_y())
+        pdf.line(18, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.set_text_color(*TEXT_DARK)
         pdf.ln(3)
 
     def kv_row(label: str, value: str, label_w: int = 52):
         """Bold label + normal value on the same line."""
+        pdf.set_x(18)  # Always start at the left margin
         pdf.set_font("helvetica", "B", 10)
         pdf.set_text_color(*TEXT_MUTED)
         pdf.cell(label_w, 7, clean(label), ln=0)
         pdf.set_font("helvetica", "", 10)
         pdf.set_text_color(*TEXT_DARK)
-        pdf.multi_cell(0, 7, clean(value))
+        # Use explicit width to the right margin to avoid fpdf2 wrap errors
+        avail_w = pdf.w - pdf.r_margin - pdf.get_x()
+        pdf.multi_cell(avail_w, 7, clean(value))
+        # Ensure we move to the next line at the left margin
+        pdf.ln(0)
 
     def bullet(text: str):
         """Indented bullet point."""
+        pdf.set_x(18)  # Start at margin
         pdf.set_font("helvetica", "", 10)
         pdf.set_text_color(*TEXT_DARK)
-        pdf.set_x(22)
-        pdf.multi_cell(pdf.epw - 4, 6, clean(f"*  {text}"))
+        pdf.set_x(22)  # Then indent
+        avail_w = pdf.w - pdf.r_margin - 22
+        pdf.multi_cell(avail_w, 6, clean(f"*  {text}"))
+        pdf.ln(0)
 
     # ── HEADER BANNER ──────────────────────────────────────────────
     HEADER_H = 42
@@ -160,11 +168,11 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
     if safety_val:
         pdf.set_text_color(*GREEN)
         pdf.set_font("helvetica", "B", 10)
-        pdf.cell(0, 7, "PASSED — Safe for Home Care", ln=1)
+        pdf.cell(0, 7, "PASSED - Safe for Home Care", ln=1)
     else:
         pdf.set_text_color(*RED)
         pdf.set_font("helvetica", "B", 10)
-        pdf.cell(0, 7, "WARNING — Consult a Doctor Immediately", ln=1)
+        pdf.cell(0, 7, "WARNING - Consult a Doctor Immediately", ln=1)
     pdf.set_text_color(*TEXT_DARK)
 
     # ── SECTION 2 — BIO-VISUAL ANALYSIS ───────────────────────────

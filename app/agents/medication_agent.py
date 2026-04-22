@@ -38,12 +38,20 @@ Include at least 3 prevention tips for the patient.
         resp = await self.get_response(prompt)
         data = self.parse_json(resp)
         
-        # Debug: Log if any field is missing
-        if not data.get("prevention"):
-            print(f"⚠️  WARNING: Prevention missing in response. Raw response: {resp[:300]}")
+        DEFAULT_PREVENTION = [
+            "Maintain standard health precautions.",
+            "Rest adequately and get 7-8 hours of sleep.",
+            "Stay well-hydrated (drink 8+ glasses of water daily)."
+        ]
+
+        # Debug: Log if any field is missing or empty
+        prevention_data = data.get("prevention", [])
+        if not prevention_data:  # handles None AND empty list []
+            print(f"⚠️  WARNING: Prevention missing/empty in response. Raw response: {resp[:300]}")
+            prevention_data = DEFAULT_PREVENTION
         
         return {
             "allopathic": data.get("allopathic", [{"name": "Consult a physician", "dosage": "N/A", "instruction": "For formal prescription"}]),
             "ayurvedic": data.get("ayurvedic", [{"remedy": "Consult an expert", "benefit": "For customized home remedies"}]),
-            "prevention": data.get("prevention", ["Maintain standard precautions.", "Rest adequately", "Stay hydrated"])
+            "prevention": prevention_data
         }

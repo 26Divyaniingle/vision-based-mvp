@@ -1,5 +1,9 @@
 from fpdf import FPDF
 import io
+import os
+
+# Logo path — works both locally and on server
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "medsense_logo.png")
 
 def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient") -> bytes:
     pdf = FPDF()
@@ -7,22 +11,31 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
     pdf.set_margins(15, 15, 15)
     pdf.add_page()
     
-    # Header Branding
-    pdf.set_fill_color(15, 12, 41) # Dark Blue theme from UI
-    # Reset X to 0 for full-width rect, then restore margins
-    pdf.rect(0, 0, 210, 40, 'F')
-    
+    # ── Header Branding ──────────────────────────────────────────
+    HEADER_H = 48
+    pdf.set_fill_color(15, 12, 41)  # Deep navy
+    pdf.rect(0, 0, 210, HEADER_H, 'F')
+
+    # Logo (left side) — rendered only if file exists
+    if os.path.exists(LOGO_PATH):
+        pdf.image(LOGO_PATH, x=8, y=6, h=36)   # auto-width from height
+
+    # App name & subtitle (centred in remaining space)
     pdf.set_y(10)
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font("helvetica", "B", 20)
-    pdf.cell(0, 15, "MEDICAL CONSULTATION REPORT", ln=1, align="C")
-    pdf.set_font("helvetica", "", 10)
-    pdf.cell(0, 5, "Powered by Vision Agentic AI & MedGemma", ln=1, align="C")
-    pdf.ln(10)
-    
+    pdf.set_font("helvetica", "B", 22)
+    pdf.cell(0, 12, "MedSense", ln=1, align="C")
+    pdf.set_font("helvetica", "B", 13)
+    pdf.set_text_color(100, 220, 210)   # teal accent
+    pdf.cell(0, 7, "MEDICAL CONSULTATION REPORT", ln=1, align="C")
+    pdf.set_font("helvetica", "", 9)
+    pdf.set_text_color(200, 200, 200)
+    pdf.cell(0, 6, "Powered by Vision Agentic AI & MedGemma", ln=1, align="C")
+    pdf.ln(5)
+
     # Body Text Color
     pdf.set_text_color(0, 0, 0)
-    pdf.set_y(45) # Move below header
+    pdf.set_y(HEADER_H + 5)  # Move below header
     
     # Patient Info Header
     pdf.set_font("helvetica", "B", 12)
@@ -150,11 +163,14 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
     pdf.set_font("helvetica", "B", 11)
     pdf.cell(0, 8, "Preventive Measures:", ln=1)
     pdf.set_font("helvetica", "", 10)
-    if isinstance(prevention, list):
-        for line in prevention:
-            pdf.multi_cell(pdf.epw, 6, clean_text(f"  - {line}"))
+    if prevention:
+        if isinstance(prevention, list):
+            for line in prevention:
+                pdf.multi_cell(pdf.epw, 6, clean_text(f"  - {line}"))
+        else:
+            pdf.multi_cell(pdf.epw, 6, clean_text(prevention))
     else:
-        pdf.multi_cell(pdf.epw, 6, clean_text(prevention))
+        pdf.cell(0, 7, "  - Maintain standard health precautions, stay hydrated, and rest adequately.", ln=1)
     
     # Safety Check
     pdf.ln(5)

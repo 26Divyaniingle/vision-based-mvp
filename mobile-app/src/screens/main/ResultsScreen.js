@@ -34,7 +34,8 @@ const ResultsScreen = ({ route, navigation }) => {
             Alert.alert('Error', res.data.msg || 'Failed to send email.');
         }
     } catch (e) {
-        Alert.alert('Error', 'Server unreachable.');
+        const errorMsg = e.response?.data?.detail || e.message || 'Server unreachable.';
+        Alert.alert('Error', errorMsg);
     } finally {
         setIsSending(false);
     }
@@ -57,9 +58,9 @@ const ResultsScreen = ({ route, navigation }) => {
           
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${diagnosis.confidence}%` }]} />
+              <View style={[styles.progressFill, { width: `${diagnosis.confidence > 1 ? diagnosis.confidence : diagnosis.confidence * 100}%` }]} />
             </View>
-            <Text style={styles.confidenceText}>{diagnosis.confidence}% Confidence Match</Text>
+            <Text style={styles.confidenceText}>{(diagnosis.confidence > 1 ? diagnosis.confidence : diagnosis.confidence * 100).toFixed(1)}% Confidence Match</Text>
           </View>
           
           <View style={[styles.safetyBadge, { backgroundColor: diagnosis.safety_passed ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)' }]}>
@@ -88,6 +89,7 @@ const ResultsScreen = ({ route, navigation }) => {
                 <View key={i} style={styles.medItem}>
                   <Text style={styles.medTitle}>{m.name}</Text>
                   <Text style={styles.medDesc}>{m.dosage} • {m.instruction}</Text>
+                  <Text style={styles.medPurpose}>{m.purpose}</Text>
                 </View>
               ))}
             </View>
@@ -96,7 +98,12 @@ const ResultsScreen = ({ route, navigation }) => {
                {(diagnosis?.medication?.ayurvedic || []).map((m, i) => (
                 <View key={i} style={styles.medItem}>
                   <Text style={styles.medTitle}>{m.remedy}</Text>
-                  <Text style={styles.medDesc}>{m.benefit}</Text>
+                  <Text style={styles.medBenefit}>{m.benefit}</Text>
+                  <View style={styles.recipeBox}>
+                    <Text style={styles.recipeTitle}>Recipe & Usage:</Text>
+                    <Text style={styles.recipeText}>{m.usage}</Text>
+                    <Text style={styles.timingText}><Text style={{fontWeight: 'bold'}}>Timing: </Text>{m.timing}</Text>
+                  </View>
                 </View>
               ))}
             </View>
@@ -164,7 +171,13 @@ const styles = StyleSheet.create({
   medCard: { padding: 20, marginBottom: 30 },
   medItem: { marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   medTitle: { color: Colors.emerald, fontSize: 17, fontWeight: 'bold', marginBottom: 4 },
-  medDesc: { color: Colors.textSecondary, fontSize: 14, lineHeight: 20 },
+  medDesc: { color: Colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 4 },
+  medPurpose: { color: Colors.textMuted, fontSize: 12, fontStyle: 'italic', lineHeight: 18 },
+  medBenefit: { color: Colors.indigo, fontSize: 15, fontWeight: 'bold', marginBottom: 8 },
+  recipeBox: { backgroundColor: 'rgba(255,255,255,0.03)', padding: 12, borderRadius: 12, marginTop: 5 },
+  recipeTitle: { color: Colors.textSecondary, fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 5 },
+  recipeText: { color: Colors.textPrimary, fontSize: 13, lineHeight: 19, marginBottom: 8 },
+  timingText: { color: Colors.textSecondary, fontSize: 12 },
   emailCard: { padding: 20, marginBottom: 20, backgroundColor: 'rgba(255,255,255,0.02)' },
   emailLabel: { color: Colors.textSecondary, fontSize: 12, fontWeight: 'bold', marginBottom: 12, textTransform: 'uppercase' },
   emailRow: { flexDirection: 'row', gap: 10 },

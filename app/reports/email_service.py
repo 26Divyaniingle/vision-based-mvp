@@ -60,7 +60,9 @@ def send_otp_email(to_email: str, otp: str, patient_name: str = "Patient") -> bo
         print(f"OTP sent successfully to {to_email}")
         return True
     except Exception as e:
-        print(f"OTP email failed: {e}")
+        import traceback
+        print(f"OTP email failed for {to_email}: {e}")
+        traceback.print_exc()
         return False
 
 def send_report_email(to_email: str, pdf_bytes: bytes, patient_name: str="Patient") -> bool:
@@ -121,6 +123,8 @@ def send_report_email(to_email: str, pdf_bytes: bytes, patient_name: str="Patien
         print(f"Report sent successfully to {to_email}")
         return True
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        import traceback
+        print(f"Failed to send email to {to_email}: {e}")
+        traceback.print_exc()
         return False
 

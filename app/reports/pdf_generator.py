@@ -83,7 +83,7 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
     
     pdf.set_font("helvetica", "", 9)
     pdf.set_text_color(190, 190, 220)
-    pdf.cell(0, 6, "Powered by Vision Agentic AI & MedGemma", ln=1, align="C")
+    pdf.cell(0, 6, "Powered by Vision Agentic AI & Groq Llama", ln=1, align="C")
 
     # accent line below header
     pdf.set_y(HEADER_H)
@@ -187,10 +187,11 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
     section_header("Allopathic Recommendations (Modern Medicine)")
     if allopathic:
         for m in allopathic:
-            name   = m.get("name",        "N/A")
-            dosage = m.get("dosage",      "N/A")
-            instr  = m.get("instruction", "N/A")
-            bullet(f"{name}  -  {dosage}  ({instr})")
+            name    = m.get("name",        "N/A")
+            dosage  = m.get("dosage",      "N/A")
+            instr   = m.get("instruction", "N/A")
+            purpose = m.get("purpose",     "N/A")
+            bullet(f"{name}  -  {dosage}  ({instr})  -  For: {purpose}")
     else:
         bullet("No allopathic medications provided.")
 
@@ -200,7 +201,18 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
         for a in ayurvedic:
             remedy  = a.get("remedy",  "N/A")
             benefit = a.get("benefit", "N/A")
-            bullet(f"{remedy}  -  {benefit}")
+            usage   = a.get("usage",   "N/A")
+            timing  = a.get("timing",  "N/A")
+            
+            bullet(f"{remedy}: {benefit}")
+            # Add detail explanation for how and when to use
+            pdf.set_x(26)
+            pdf.set_font("helvetica", "I", 9)
+            pdf.set_text_color(*TEXT_MUTED)
+            pdf.multi_cell(0, 5, clean(f"Recipe & Usage: {usage}"))
+            pdf.set_x(26)
+            pdf.multi_cell(0, 5, clean(f"When to use: {timing}"))
+            pdf.ln(2)
     else:
         bullet("No ayurvedic remedies provided.")
 

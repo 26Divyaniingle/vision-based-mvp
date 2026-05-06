@@ -1,3 +1,11 @@
+"""
+Interview Engine Module
+This module manages medical consultation interviews with patients.
+It handles dynamic question generation, symptom extraction, and emotional monitoring.
+Each consultation is a session that collects symptoms, emotions, and answers.
+The final summary is used by the Supervisor Agent for diagnosis and prescription.
+"""
+
 import time
 import uuid
 import asyncio

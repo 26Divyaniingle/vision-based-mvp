@@ -8,7 +8,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session as DBSession
 
 from app.database.db import get_db
-from app.database.crud import create_session
+from app.database.crud import create_session, get_sessions_by_patient_id
 from app.interview.interview_engine import create_interview, get_interview, end_interview
 from app.vision.emotion_detector import analyze_emotion
 from app.vision.eye_lip_tracker import extract_vision_features
@@ -175,8 +175,16 @@ async def complete_interview(req: CompleteInterviewRequest, db: DBSession = Depe
         "total_frames_analyzed": vision_summary.get("total_frames", 0)
     }
 
+    # Fetch patient history if available
+    patient_history = []
+    if session.patient_id > 0:
+        try:
+            patient_history = get_sessions_by_patient_id(db, session.patient_id)
+        except Exception as e:
+            print(f"Error fetching patient history in route: {e}")
+
     # Run the existing agentic workflow
-    ai_result = await run_agentic_workflow(form_data, vision_features)
+    ai_result = await run_agentic_workflow(form_data, vision_features, patient_history=patient_history)
     
     import json
 

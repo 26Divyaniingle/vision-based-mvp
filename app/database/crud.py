@@ -1,7 +1,14 @@
+"""
+CRUD Operations Module
+This file contains all database query functions (Create, Read, Update, Delete).
+It handles patient management, session management, and authentication-related queries.
+CRUD = Create, Read, Update, Delete - the basic database operations.
+"""
+
 from sqlalchemy.orm import Session
-from .models import Patient, Session as SessionModel
+from .models import Patient, Session as SessionModel  # Database models
 from typing import List
-from app.auth.token_reset import hash_token, verify_token
+from app.auth.token_reset import hash_token, verify_token  # Token hashing functions
 from datetime import datetime, timezone
 
 def get_patient_by_token(db: Session, plain_token: str):

@@ -1,5 +1,5 @@
 """
-Symptom Extractor - Uses Gemini LLM to extract structured medical symptoms
+Symptom Extractor - Uses Groq AI to extract structured medical symptoms
 from patient's natural language responses during the interview.
 """
 import json

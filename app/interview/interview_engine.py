@@ -82,8 +82,8 @@ class InterviewSession:
         # Calculate current question count (how many questions has the bot ASKED)
         questions_asked = len([m for m in self.conversation_history if m["role"] == "bot"])
         
-        # Hard limits (7-10 questions)
-        if questions_asked >= 10:
+        # Hard limits (8 questions)
+        if questions_asked >= 8:
             self.completed = True
             return {
                 "status": "completed",
@@ -121,7 +121,7 @@ class InterviewSession:
             "next_question": next_q,
             "symptoms_so_far": self.extracted_symptoms,
             "question_number": self.current_question_index + 1,
-            "total_questions": 10
+            "total_questions": 8
         }
 
     def add_vision_frame(self, vision_data: dict):

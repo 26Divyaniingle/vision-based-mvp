@@ -9,12 +9,12 @@ import { loginFace, loginToken } from '../../api/auth';
 import { saveUser } from '../../utils/storage';
 
 const LoginScreen = ({ navigation }) => {
-  const [tab, setTab] = useState('face'); 
+  const [tab, setTab] = useState('face');
   const [permission, requestPermission] = useCameraPermissions();
   const [token, setToken] = useState('');
   const [isScanning, setIsScanning] = useState(false);
   const cameraRef = useRef(null);
-  
+
   const scanAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -35,7 +35,7 @@ const LoginScreen = ({ navigation }) => {
     return (
       <View style={styles.container}>
         <Smartphone size={64} color={Colors.indigo} style={{ marginBottom: 20 }} />
-        <Text style={styles.permText}>MediSense needs camera access for clinical authentication.</Text>
+        <Text style={styles.permText}>MedSense needs camera access for clinical authentication.</Text>
         <PrimaryButton title="Grant Access" onPress={requestPermission} />
       </View>
     );
@@ -78,7 +78,7 @@ const LoginScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <View style={styles.branding}>
-        <Text style={styles.title}>MediSense</Text>
+        <Text style={styles.title}>MedSense</Text>
         <Text style={styles.dot}>.</Text>
       </View>
       <Text style={styles.subtitle}>Vision-Based Medical Assistant</Text>
@@ -102,9 +102,9 @@ const LoginScreen = ({ navigation }) => {
               <Animated.View style={[styles.scanLine, { top: scanAnim }]} />
               <View style={styles.cameraReticle} />
             </View>
-            <PrimaryButton 
-              title={isScanning ? "Authenticating..." : "Scan Biometrics"} 
-              onPress={handleFaceLogin} 
+            <PrimaryButton
+              title={isScanning ? "Authenticating..." : "Scan Biometrics"}
+              onPress={handleFaceLogin}
               style={{ marginTop: 25 }}
             />
           </View>
@@ -140,10 +140,10 @@ const LoginScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl },
-  branding: { flexDirection: 'row', alignItems: 'baseline' },
+  branding: { flexDirection: 'row', alignItems: 'baseline', marginTop: 10 },
   title: { fontSize: 42, fontWeight: '900', color: '#fff', letterSpacing: -1 },
   dot: { fontSize: 42, fontWeight: '900', color: Colors.indigo },
-  subtitle: { fontSize: 13, color: Colors.textSecondary, marginBottom: 50, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 2 },
+  subtitle: { fontSize: 13, color: Colors.textSecondary, marginBottom: 10, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 1.15 },
   tabContainer: { flexDirection: 'row', marginBottom: 25, backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 16, padding: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12 },
   activeTab: { backgroundColor: Colors.indigo, ...Shadows.glow },

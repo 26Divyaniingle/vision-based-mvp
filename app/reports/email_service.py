@@ -53,16 +53,22 @@ def send_otp_email(to_email: str, otp: str, patient_name: str = "Patient") -> bo
         msg.set_content(text_content)
         msg.add_alternative(html_content, subtype='html')
         
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
+        print(f"Connecting to SMTP server {smtp_server}:{smtp_port} for OTP...")
+        with smtplib.SMTP(smtp_server, smtp_port, timeout=20) as server:
+            server.ehlo()
             server.starttls()
+            server.ehlo()
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
         print(f"OTP sent successfully to {to_email}")
         return True
+    except smtplib.SMTPException as smtp_err:
+        print(f"OTP SMTP Protocol Error for {to_email}: {smtp_err}")
+        return False
     except Exception as e:
         import traceback
-        print(f"OTP email failed for {to_email}: {e}")
-        traceback.print_exc()
+        print(f"OTP email failed for {to_email} (Network/Server Error): {e}")
+        # traceback.print_exc()
         return False
 
 def send_report_email(to_email: str, pdf_bytes: bytes, patient_name: str="Patient") -> bool:
@@ -115,16 +121,22 @@ def send_report_email(to_email: str, pdf_bytes: bytes, patient_name: str="Patien
         msg.add_alternative(html_content, subtype='html')
         msg.add_attachment(pdf_bytes, maintype='application', subtype='pdf', filename='Medical_Report.pdf')
 
-        with smtplib.SMTP(smtp_server, smtp_port) as server:
-            server.starttls()
+        print(f"Connecting to SMTP server {smtp_server}:{smtp_port}...")
+        with smtplib.SMTP(smtp_server, smtp_port, timeout=20) as server:
+            server.ehlo() # Identify ourselves to the server
+            server.starttls() # Secure the connection
+            server.ehlo() # Re-identify after TLS
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
             
         print(f"Report sent successfully to {to_email}")
         return True
+    except smtplib.SMTPException as smtp_err:
+        print(f"SMTP Protocol Error for {to_email}: {smtp_err}")
+        return False
     except Exception as e:
         import traceback
-        print(f"Failed to send email to {to_email}: {e}")
-        traceback.print_exc()
+        print(f"Failed to send email to {to_email} (Network/Server Error): {e}")
+        # traceback.print_exc()
         return False
 

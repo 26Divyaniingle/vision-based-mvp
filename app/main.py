@@ -5,7 +5,7 @@ It also handles model pre-loading during startup to prevent timeouts on first re
 """
 
 from fastapi import FastAPI
-from app.api import routes_auth, routes_session, routes_report, routes_interview, routes_ws
+from app.api import routes_auth, routes_session, routes_report, routes_interview, routes_ws, routes_ai_assistant
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from contextlib import asynccontextmanager
@@ -74,6 +74,7 @@ app.include_router(routes_session.router, prefix="/session", tags=["session"])  
 app.include_router(routes_report.router, prefix="/report", tags=["report"])  # PDF report generation endpoints
 app.include_router(routes_interview.router, prefix="/interview", tags=["interview"])  # Medical interview endpoints
 app.include_router(routes_ws.router, prefix="/ws", tags=["websocket"])  # WebSocket endpoints for real-time communication
+app.include_router(routes_ai_assistant.router, prefix="/assistant", tags=["assistant"])  # AI Assistant endpoints
 
 @app.get("/")
 def root():

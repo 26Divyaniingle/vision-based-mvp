@@ -52,7 +52,7 @@ def start_interview(req: StartInterviewRequest):
         "session_id": session.session_id,
         "question": first_question,
         "question_number": 1,
-        "total_questions": 10,
+        "total_questions": 8,
         "message": "Interview started successfully. Ask the patient the first question."
     }
 
@@ -93,7 +93,7 @@ async def submit_answer(req: AnswerRequest):
         "status": result["status"],
         "next_question": result.get("next_question"),
         "question_number": result.get("question_number", session.current_question_index + 1),
-        "total_questions": result.get("total_questions", 10),
+        "total_questions": result.get("total_questions", 8),
         "symptoms_detected": session.extracted_symptoms,
         "vision_summary": vision_summary,
         "message": result.get("message", "")
@@ -242,7 +242,7 @@ def get_interview_status(session_id: str):
         "session_id": session.session_id,
         "completed": session.completed,
         "current_question": session.current_question_index + 1,
-        "total_questions": 10,
+        "total_questions": 8,
         "symptoms_detected": session.extracted_symptoms,
         "vision_frames_captured": len(session.vision_frames),
         "vision_summary": session.get_vision_summary()

@@ -8,7 +8,7 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { sendOTP, verifyOTP, reRegisterFace } from '../../api/auth';
 
 const ForgotTokenScreen = ({ navigation }) => {
-  const [step, setStep] = useState(1); 
+  const [step, setStep] = useState(1);
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
   const [permission, requestPermission] = useCameraPermissions();
@@ -80,9 +80,9 @@ const ForgotTokenScreen = ({ navigation }) => {
 
       {(!permission || !permission.granted) && step === 3 ? (
         <View style={styles.permBox}>
-           <Shield color={Colors.indigo} size={48} style={{ marginBottom: 10 }} />
-           <Text style={styles.permText}>MediSense needs camera access to recapture your biometric profile.</Text>
-           <PrimaryButton title="Grant Access" onPress={requestPermission} />
+          <Shield color={Colors.indigo} size={48} style={{ marginBottom: 10 }} />
+          <Text style={styles.permText}>MedSense needs camera access to recapture your biometric profile.</Text>
+          <PrimaryButton title="Grant Access" onPress={requestPermission} />
         </View>
       ) : (
         <GlassCard style={styles.card}>
@@ -105,8 +105,8 @@ const ForgotTokenScreen = ({ navigation }) => {
           {step === 3 && (
             <View style={{ width: '100%' }}>
               <View style={styles.cameraWrapper}>
-                 <CameraView ref={cameraRef} style={styles.camera} facing="front" />
-                 <View style={styles.cameraOverlay} />
+                <CameraView ref={cameraRef} style={styles.camera} facing="front" />
+                <View style={styles.cameraOverlay} />
               </View>
               <Text style={styles.hint}>Capture a new face embedding to restore your biometric login.</Text>
               <PrimaryButton title={isProcessing ? "Updating..." : "Recapture Face"} onPress={handleReRegister} style={{ marginTop: 25 }} />

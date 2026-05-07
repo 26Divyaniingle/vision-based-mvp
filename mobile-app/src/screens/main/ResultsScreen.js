@@ -5,6 +5,7 @@ import PrimaryButton from '../../components/PrimaryButton';
 import { generatePDF, emailPDF } from '../../api/report';
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, Linking, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from '../../api/client';
 
 const ResultsScreen = ({ route, navigation }) => {
@@ -42,115 +43,117 @@ const ResultsScreen = ({ route, navigation }) => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.header}>
-        <FileText color={Colors.indigo} size={24} />
-        <Text style={styles.headerTitle}>Medical Analysis</Text>
-      </View>
-      
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <GlassCard style={styles.diagnosisCard}>
-          <Text style={styles.label}>Potential Condition</Text>
-          <Text style={styles.conditionText}>{diagnosis.condition}</Text>
-          
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${diagnosis.confidence > 1 ? diagnosis.confidence : diagnosis.confidence * 100}%` }]} />
-            </View>
-            <Text style={styles.confidenceText}>{(diagnosis.confidence > 1 ? diagnosis.confidence : diagnosis.confidence * 100).toFixed(1)}% Confidence Match</Text>
-          </View>
-          
-          <View style={[styles.safetyBadge, { backgroundColor: diagnosis.safety_passed ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)' }]}>
-             {diagnosis.safety_passed ? <CheckCircle color={Colors.emerald} size={14} /> : <AlertTriangle color={Colors.rose} size={14} />}
-             <Text style={[styles.safetyText, { color: diagnosis.safety_passed ? Colors.emerald : Colors.rose }]}>
-               {diagnosis.safety_passed ? 'CLINICAL SAFETY PASSED' : 'IMMEDIATE CARE ADVISED'}
-             </Text>
-          </View>
-        </GlassCard>
-
-        <View style={styles.tabHeader}>
-          <TouchableOpacity onPress={() => setActiveTab('allopathic')} style={[styles.tab, activeTab === 'allopathic' && styles.activeTab]}>
-            <Pill color={activeTab === 'allopathic' ? '#fff' : Colors.textSecondary} size={18} />
-            <Text style={[styles.tabText, activeTab === 'allopathic' && styles.activeTabText]}>Allopathic</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab('ayurvedic')} style={[styles.tab, activeTab === 'ayurvedic' && styles.activeTab]}>
-            <Leaf color={activeTab === 'ayurvedic' ? '#fff' : Colors.textSecondary} size={18} />
-            <Text style={[styles.tabText, activeTab === 'ayurvedic' && styles.activeTabText]}>Ayurvedic</Text>
-          </TouchableOpacity>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.header}>
+          <FileText color={Colors.indigo} size={24} />
+          <Text style={styles.headerTitle}>Medical Analysis</Text>
         </View>
-
-        <GlassCard style={styles.medCard}>
-          {activeTab === 'allopathic' ? (
-            <View>
-              {(diagnosis?.medication?.allopathic || []).map((m, i) => (
-                <View key={i} style={styles.medItem}>
-                  <Text style={styles.medTitle}>{m.name}</Text>
-                  <Text style={styles.medDesc}>{m.dosage} • {m.instruction}</Text>
-                  <Text style={styles.medPurpose}>{m.purpose}</Text>
-                </View>
-              ))}
+        
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <GlassCard style={styles.diagnosisCard}>
+            <Text style={styles.label}>Potential Condition</Text>
+            <Text style={styles.conditionText}>{diagnosis.condition}</Text>
+            
+            <View style={styles.progressContainer}>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${diagnosis.confidence > 1 ? diagnosis.confidence : diagnosis.confidence * 100}%` }]} />
+              </View>
+              <Text style={styles.confidenceText}>{(diagnosis.confidence > 1 ? diagnosis.confidence : diagnosis.confidence * 100).toFixed(1)}% Confidence Match</Text>
             </View>
-          ) : (
-            <View>
-               {(diagnosis?.medication?.ayurvedic || []).map((m, i) => (
-                <View key={i} style={styles.medItem}>
-                  <Text style={styles.medTitle}>{m.remedy}</Text>
-                  <Text style={styles.medBenefit}>{m.benefit}</Text>
-                  <View style={styles.recipeBox}>
-                    <Text style={styles.recipeTitle}>Recipe & Usage:</Text>
-                    <Text style={styles.recipeText}>{m.usage}</Text>
-                    <Text style={styles.timingText}><Text style={{fontWeight: 'bold'}}>Timing: </Text>{m.timing}</Text>
+            
+            <View style={[styles.safetyBadge, { backgroundColor: diagnosis.safety_passed ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)' }]}>
+               {diagnosis.safety_passed ? <CheckCircle color={Colors.emerald} size={14} /> : <AlertTriangle color={Colors.rose} size={14} />}
+               <Text style={[styles.safetyText, { color: diagnosis.safety_passed ? Colors.emerald : Colors.rose }]}>
+                 {diagnosis.safety_passed ? 'CLINICAL SAFETY PASSED' : 'IMMEDIATE CARE ADVISED'}
+               </Text>
+            </View>
+          </GlassCard>
+
+          <View style={styles.tabHeader}>
+            <TouchableOpacity onPress={() => setActiveTab('allopathic')} style={[styles.tab, activeTab === 'allopathic' && styles.activeTab]}>
+              <Pill color={activeTab === 'allopathic' ? '#fff' : Colors.textSecondary} size={18} />
+              <Text style={[styles.tabText, activeTab === 'allopathic' && styles.activeTabText]}>Allopathic</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setActiveTab('ayurvedic')} style={[styles.tab, activeTab === 'ayurvedic' && styles.activeTab]}>
+              <Leaf color={activeTab === 'ayurvedic' ? '#fff' : Colors.textSecondary} size={18} />
+              <Text style={[styles.tabText, activeTab === 'ayurvedic' && styles.activeTabText]}>Ayurvedic</Text>
+            </TouchableOpacity>
+          </View>
+
+          <GlassCard style={styles.medCard}>
+            {activeTab === 'allopathic' ? (
+              <View>
+                {(diagnosis?.medication?.allopathic || []).map((m, i) => (
+                  <View key={i} style={styles.medItem}>
+                    <Text style={styles.medTitle}>{m.name}</Text>
+                    <Text style={styles.medDesc}>{m.dosage} • {m.instruction}</Text>
+                    <Text style={styles.medPurpose}>{m.purpose}</Text>
                   </View>
-                </View>
-              ))}
-            </View>
-          )}
-        </GlassCard>
+                ))}
+              </View>
+            ) : (
+              <View>
+                 {(diagnosis?.medication?.ayurvedic || []).map((m, i) => (
+                  <View key={i} style={styles.medItem}>
+                    <Text style={styles.medTitle}>{m.remedy}</Text>
+                    <Text style={styles.medBenefit}>{m.benefit}</Text>
+                    <View style={styles.recipeBox}>
+                      <Text style={styles.recipeTitle}>Recipe & Usage:</Text>
+                      <Text style={styles.recipeText}>{m.usage}</Text>
+                      <Text style={styles.timingText}><Text style={{fontWeight: 'bold'}}>Timing: </Text>{m.timing}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </GlassCard>
 
-        <GlassCard style={styles.emailCard}>
-            <Text style={styles.emailLabel}>Get Report via Email</Text>
-            <View style={styles.emailRow}>
-                <TextInput 
-                    style={styles.emailInput}
-                    placeholder="your@email.com"
-                    placeholderTextColor={Colors.textMuted}
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                />
-                <TouchableOpacity 
-                    style={[styles.emailBtn, isSending && { opacity: 0.6 }]} 
-                    onPress={handleEmail}
-                    disabled={isSending}
-                >
-                    <Mail color="#fff" size={18} />
-                </TouchableOpacity>
-            </View>
-        </GlassCard>
+          <GlassCard style={styles.emailCard}>
+              <Text style={styles.emailLabel}>Get Report via Email</Text>
+              <View style={styles.emailRow}>
+                  <TextInput 
+                      style={styles.emailInput}
+                      placeholder="your@email.com"
+                      placeholderTextColor={Colors.textMuted}
+                      value={email}
+                      onChangeText={setEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                  />
+                  <TouchableOpacity 
+                      style={[styles.emailBtn, isSending && { opacity: 0.6 }]} 
+                      onPress={handleEmail}
+                      disabled={isSending}
+                  >
+                      <Mail color="#fff" size={18} />
+                  </TouchableOpacity>
+              </View>
+          </GlassCard>
 
-        <View style={styles.actions}>
-          <PrimaryButton 
-            title="Download PDF" 
-            onPress={handleExport} 
-            variant="primary" 
-            style={styles.exportBtn}
-          />
-          <TouchableOpacity onPress={() => navigation.navigate('Dashboard')} style={styles.homeBtn}>
-            <Home color={Colors.textSecondary} size={20} />
-            <Text style={styles.homeBtnText}>Return to Dashboard</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <View style={styles.actions}>
+            <PrimaryButton 
+              title="Download PDF" 
+              onPress={handleExport} 
+              variant="primary" 
+              style={styles.exportBtn}
+            />
+            <TouchableOpacity onPress={() => navigation.navigate('Dashboard')} style={styles.homeBtn}>
+              <Home color={Colors.textSecondary} size={20} />
+              <Text style={styles.homeBtnText}>Return to Dashboard</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg, paddingTop: 60 },
+  container: { flex: 1, backgroundColor: Colors.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 20 },
   headerTitle: { fontSize: 22, color: Colors.textPrimary, fontWeight: 'bold' },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },

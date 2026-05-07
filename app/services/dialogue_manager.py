@@ -41,7 +41,7 @@ async def generate_next_question(conversation_history: list, symptoms: list, act
     Patients get frustrated with long interviews, so be brief and get to the point.
 
     CURRENT QUESTION NUMBER: {question_count}
-    Goal: Ask 7-8 questions minimum, 10 questions MAXIMUM.
+    Goal: Ask 7 questions minimum, 8 questions MAXIMUM.
 
     Recent History:
     {json.dumps(truncated_history, indent=2)}
@@ -50,11 +50,13 @@ async def generate_next_question(conversation_history: list, symptoms: list, act
     Patient Emotion: {active_emotion}
 
     Task: Generate ONE concise follow-up question.
-    1. Acknowledge emotion briefly if it suggests distress.
-    2. Ask a logical follow-up question that HAS NOT BEEN ASKED YET.
-    3. DO NOT repeat yourself or ask for information already provided in the history.
-    4. If you have enough information for a diagnosis AND you have asked at least 7 questions, respond only with "INTERVIEW_COMPLETE".
-    5. If this is question number 10, YOU MUST respond only with "INTERVIEW_COMPLETE".
+    1. Acknowledge emotion briefly ONLY if it's the FIRST time you are noticing a major emotional shift. 
+    2. ABSOLUTELY FORBIDDEN: Do not repeat emotional acknowledgments, empathy statements, or observations about the user's expression (like "I see you are surprised", "I noticed you look upset", etc.) if you or the user have already addressed them earlier in the conversation history.
+    3. Ask a logical follow-up question that HAS NOT BEEN ASKED YET.
+    4. DO NOT repeat yourself or ask for information already provided in the history.
+    5. Each response must be unique and move the consultation forward.
+    6. If you have enough information for a diagnosis AND you have asked at least 7 questions, respond only with "INTERVIEW_COMPLETE".
+    7. If this is question number 8, YOU MUST respond only with "INTERVIEW_COMPLETE".
 
     CRITICAL: Speak in {language}. 
     Return ONLY the question or the flag.

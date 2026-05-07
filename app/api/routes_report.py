@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.database.crud import get_session_by_id, get_all_patients
@@ -73,7 +73,7 @@ def generate_pdf(session_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"PDF Generation failed: {str(e)}")
 
 @router.post("/email_pdf")
-def email_pdf(session_id: str, email: str, db: Session = Depends(get_db)):
+def email_pdf(session_id: str, email: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     db_session = get_session_by_id(db, session_id)
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -117,8 +117,11 @@ def email_pdf(session_id: str, email: str, db: Session = Depends(get_db)):
             "safety_passed": bool(db_session.safety_check_passed)
         }
         pdf_bytes = generate_session_pdf_bytes(session_data, patient_name=patient_name)
-        res = send_report_email(email, pdf_bytes, patient_name)
-        return {"success": res, "msg": "Email sent" if res else "Email failed to send"}
+        
+        # Use BackgroundTasks to avoid client timeout
+        background_tasks.add_task(send_report_email, email, pdf_bytes, patient_name)
+        
+        return {"success": True, "msg": "Medical report is being sent to your email."}
     except Exception as e:
         print(f"Email PDF Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

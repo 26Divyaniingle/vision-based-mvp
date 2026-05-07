@@ -90,6 +90,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         "type": "alert",
                         "message": "Pain expressions detected. I'm noting this in your profile."
                     }))
+        except Exception as e:
+            print(f"Vision Analysis Error: {e}")
         finally:
             vision_task_active = False
 
@@ -98,6 +100,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
             try:
                 # Receive text or binary data
                 message = await websocket.receive_text()
+            except WebSocketDisconnect:
+                # Connection closed normally
+                break
+            except Exception as e:
+                # Connection closed with error or protocol issue
+                print(f"WebSocket receive error: {e}")
+                break
+
+            try:
                 data = json.loads(message)
                 msg_type = data.get("type", "unknown")
                 
@@ -193,8 +204,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         acting_emotion = latest_emotion_metrics["dominant_emotion"]
                         if latest_emotion_metrics["distress_flags"]["pain"]: acting_emotion = "severe pain"
                         
-                        # Safety check: if we already asked 10 questions, force completion
-                        if q_count >= 10:
+                        # Safety check: if we already asked 8 questions, force completion
+                        if q_count >= 8:
                             next_q = "INTERVIEW_COMPLETE"
                         else:
                             next_q = await generate_next_question( 
@@ -272,7 +283,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                 "symptoms_so_far": list(extracted_symptoms)
                             }))
             except Exception as e:
-                print(f"Error processing message: {e}")
+                print(f"Error processing message content: {e}")
 
     except WebSocketDisconnect:
         print(f"Websocket disconnected for session: {session_id}")

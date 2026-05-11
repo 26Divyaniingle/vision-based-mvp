@@ -39,10 +39,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
     extracted_symptoms = set()
     latest_emotion_metrics = {
         "dominant_emotion": "neutral",
+        "emotion": "neutral",
         "avg_eye_strain": 0.0,
         "avg_lip_tension": 0.0,
         "emotion_counts": {},
-        "distress_flags": {"stress": False, "fatigue": False, "pain": False, "discomfort": False}
+        "distress_flags": {"stress": False, "fatigue": False, "pain": False, "discomfort": False},
+        "vision_frames_count": 0,
+        "total_frames": 0
     }
     patient_id = -1 # to be obtained upon start message
     client_lang = "English" # Default
@@ -69,6 +72,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
     async def run_vision_analysis(img_b64, reference_embedding=None):
         nonlocal vision_task_active, total_frames, vision_frames_count, latest_emotion_metrics, identity_mismatch_count, session_restricted
         try:
+            # print(f"DEBUG: Processing vision frame {total_frames} (Session: {session_id})")
+            
             # Identity Verification (Security Check)
             if total_frames % 2 == 0:
                 if reference_embedding:
@@ -125,44 +130,49 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
             analysis = await asyncio.to_thread(analyze_webcam_frame, img_b64)
             
             # Update average metrics only if face was detected
-            if analysis["features"].get("face_detected", True):
+            emo = analysis.get("emotion")
+            face_detected = analysis["features"].get("face_detected", False)
+            flags = analysis["distress_flags"]
+            
+            if emo or face_detected:
                 vision_frames_count += 1
-                emo = analysis["emotion"]
-                flags = analysis["distress_flags"]
+                latest_emotion_metrics["vision_frames_count"] = vision_frames_count
                 
-                counts = latest_emotion_metrics["emotion_counts"]
-                counts[emo] = counts.get(emo, 0) + 1
-                
-                # Compute rolling averages using vision_frames_count
-                prev_eye = latest_emotion_metrics["avg_eye_strain"]
-                curr_eye = analysis["features"].get("eye_strain_score", 0)
-                latest_emotion_metrics["avg_eye_strain"] = prev_eye + (curr_eye - prev_eye) / vision_frames_count
-                
-                prev_lip = latest_emotion_metrics["avg_lip_tension"]
-                curr_lip = analysis["features"].get("lip_tension", 0)
-                latest_emotion_metrics["avg_lip_tension"] = prev_lip + (curr_lip - prev_lip) / vision_frames_count
+                # Update Emotion Counts (if valid)
+                if emo:
+                    counts = latest_emotion_metrics["emotion_counts"]
+                    counts[emo] = counts.get(emo, 0) + 1
+                    
+                    # Mature Output: Weighted Election for dominant_emotion
+                    clinical_total = sum(counts.get(e, 0) for e in ['sad', 'fear', 'angry', 'disgust'])
+                    clinical_ratio = clinical_total / sum(counts.values())
+                    
+                    if clinical_ratio > 0.15:
+                        # Filter counts to only clinical and pick max
+                        clinical_counts = {e: counts.get(e, 0) for e in ['sad', 'fear', 'angry', 'disgust']}
+                        latest_emotion_metrics["dominant_emotion"] = max(clinical_counts, key=clinical_counts.get)
+                    else:
+                        latest_emotion_metrics["dominant_emotion"] = max(counts, key=counts.get)
+
+                # Update physical features (if valid)
+                if face_detected:
+                    curr_eye = analysis["features"].get("eye_strain_score", 0)
+                    curr_lip = analysis["features"].get("lip_tension", 0)
+                    
+                    # Corrected rolling average logic
+                    n = vision_frames_count
+                    latest_emotion_metrics["avg_eye_strain"] = (latest_emotion_metrics["avg_eye_strain"] * (n - 1) + curr_eye) / n
+                    latest_emotion_metrics["avg_lip_tension"] = (latest_emotion_metrics["avg_lip_tension"] * (n - 1) + curr_lip) / n
                 
                 latest_emotion_metrics["distress_flags"]["stress"] |= flags["stress"]
                 latest_emotion_metrics["distress_flags"]["pain"] |= flags["pain"]
-                
-                # Mature Output: Weighted Election for dominant_emotion
-                # If clinical emotions appear in > 15% of frames, prefer the most frequent clinical one.
-                # Otherwise, use the absolute majority.
-                clinical_total = sum(counts.get(e, 0) for e in ['sad', 'fear', 'angry', 'disgust'])
-                clinical_ratio = clinical_total / vision_frames_count
-                
-                if clinical_ratio > 0.15:
-                    # Filter counts to only clinical and pick max
-                    clinical_counts = {e: counts.get(e, 0) for e in ['sad', 'fear', 'angry', 'disgust']}
-                    latest_emotion_metrics["dominant_emotion"] = max(clinical_counts, key=clinical_counts.get)
-                else:
-                    latest_emotion_metrics["dominant_emotion"] = max(counts, key=counts.get)
             
             total_frames += 1
+            latest_emotion_metrics["total_frames"] = total_frames
+            latest_emotion_metrics["emotion"] = latest_emotion_metrics["dominant_emotion"]
             
             if flags["pain"]:
                 # Check connection still open before sending
-                from fastapi import WebSocketState
                 if websocket.client_state == WebSocketState.CONNECTED:
                     await websocket.send_text(json.dumps({
                         "type": "alert",
@@ -258,6 +268,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     # Received live webcam snapshot 
                     img_b64 = data.get("image_base64", "")
                     if img_b64 and not vision_task_active:
+                        # print(f"DEBUG: Received video frame for session {session_id}")
                         vision_task_active = True
                         asyncio.create_task(run_vision_analysis(img_b64, reference_embedding))
 

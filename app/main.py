@@ -30,21 +30,17 @@ async def lifespan(app: FastAPI):
         _, buffer = cv2.imencode('.jpg', dummy_img)
         dummy_b64 = base64.b64encode(buffer).decode('utf-8')
         
-        # Pre-load DeepFace Emotion detection model
-        # This makes the first emotion analysis call much faster
-        await asyncio.to_thread(analyze_emotion, dummy_b64)
-        
-        # Pre-load DeepFace FaceNet model (for face recognition)
-        # This prevents the first login/register from timing out
-        from app.vision.face_recognition import get_face_embedding
-        await asyncio.to_thread(get_face_embedding, dummy_b64)
+        # Pre-loading commented out temporarily to ensure fast startup after fixes
+        # await asyncio.to_thread(analyze_emotion, dummy_b64)
+        # from app.vision.face_recognition import get_face_embedding
+        # await asyncio.to_thread(get_face_embedding, dummy_b64)
 
         # Pre-load Medical RAG models (SentenceTransformer + FAISS)
         # This avoids several seconds of delay during the first interview turn
-        from medical_rag.disease_predictor import predict_disease
-        from medical_rag.medicine_retriever import retrieve_medicines
-        await asyncio.to_thread(predict_disease, "fever")
-        await asyncio.to_thread(retrieve_medicines, "Flu")
+        # from medical_rag.disease_predictor import predict_disease
+        # from medical_rag.medicine_retriever import retrieve_medicines
+        # await asyncio.to_thread(predict_disease, "fever")
+        # await asyncio.to_thread(retrieve_medicines, "Flu")
         
         print("Models pre-loaded successfully.")
     except Exception as e:

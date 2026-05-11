@@ -31,16 +31,16 @@ def analyze_emotion(image_base64: str) -> str:
     
     try:
         # Use DeepFace to analyze emotions
-        # detector_backend="mediapipe" is generally more accurate than opencv for facial expressions
-        objs = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False, detector_backend="mediapipe")
+        # Use opencv as it is more compatible in this environment
+        objs = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False, detector_backend="opencv")
         
-        if len(objs) > 0:
+        if objs and len(objs) > 0:
+            # Check if a face was actually detected (OpenCV backend might return empty face if not found)
+            if 'region' in objs[0] and (objs[0]['region']['w'] == 0 or objs[0]['region']['h'] == 0):
+                return None
+
             emotion_scores = objs[0]['emotion']
             dominant = objs[0]['dominant_emotion']
-            
-            # Maturity/Sensitivity Adjustment:
-            # DeepFace tends to over-report 'neutral'. In a clinical context, 
-            # if 'sad', 'fear', or 'angry' have significant scores, they are more relevant.
             
             # Clinical Priority Thresholds
             clinical_threshold = 15.0  # If a clinical emotion is > 15%, it's significant
@@ -64,6 +64,6 @@ def analyze_emotion(image_base64: str) -> str:
     except Exception as e:
         print("Emotion analysis error:", e)
     
-    # Return neutral if anything goes wrong
-    return "neutral"
+    # Return None if anything goes wrong to distinguish from 'neutral'
+    return None
 

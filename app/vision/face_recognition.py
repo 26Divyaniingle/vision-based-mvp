@@ -34,7 +34,7 @@ def verify_face(current_image_b64: str, reference_embedding: list) -> bool:
     Returns True if match, False otherwise.
     """
     if not reference_embedding:
-        return True # Can't verify if no reference exists
+        return True, 0.0 # Can't verify if no reference exists
         
     current_embedding = get_face_embedding(current_image_b64)
     if not current_embedding:

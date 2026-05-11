@@ -7,6 +7,7 @@ import GlassCard from '../../components/GlassCard';
 import PrimaryButton from '../../components/PrimaryButton';
 import { getUser, clearUser } from '../../utils/storage';
 import { getHistory } from '../../api/report';
+import SecurityStatusPanel from '../../components/SecurityStatusPanel';
 import { ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -120,6 +121,14 @@ const DashboardScreen = ({ navigation }) => {
           />
         </GlassCard>
 
+        {/* Security Monitoring Panel */}
+        {user?.id && (
+          <SecurityStatusPanel
+            patientId={user.id}
+            refresh={history.length} // re-fetches whenever history changes
+          />
+        )}
+
         <View style={styles.historySection}>
           <View style={styles.sectionHeader}>
             <History color={Colors.textSecondary} size={18} />
@@ -225,6 +234,9 @@ const styles = StyleSheet.create({
   historyLeft: { gap: 4 },
   historyCondition: { color: '#fff', fontSize: 16, fontWeight: '600' },
   historyDate: { color: Colors.textMuted, fontSize: 12 },
+  historySection: { marginBottom: 16 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },
   fab: {
     position: 'absolute',
     bottom: 32,

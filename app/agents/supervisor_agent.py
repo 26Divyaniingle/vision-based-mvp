@@ -96,9 +96,10 @@ class SupervisorAgent:
             "confidence": conf,  # How confident the AI is (0-1)
             "medication": {
                 "allopathic": med_res.get("allopathic", []),  # Western medicines
-                "ayurvedic": med_res.get("ayurvedic", [])  # Traditional remedies
+                "ayurvedic": med_res.get("ayurvedic", []),  # Traditional remedies
+                "prevention": med_res.get("prevention", []) # Lifestyle recommendations
             },
-            "prevention": med_res.get("prevention", []),  # Lifestyle recommendations
+            "prevention": med_res.get("prevention", []),  # Keep for backward compatibility if needed
             "safety_passed": safe,  # Whether medications passed safety check
             "similar_cases": similar_cases,  # Historical context used
             "patient_history_used": bool(patient_history) # Flag if personal history was used

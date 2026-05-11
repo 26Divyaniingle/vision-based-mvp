@@ -3,6 +3,9 @@ WebSocket Routes for Real-Time Streaming (Audio/Video).
 Manages full real-time flow: Speech -> Transcription -> Symptom Ext -> Next Q -> TTS TTS -> Audio output.
 """
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from starlette.websockets import WebSocketState
+
+
 import json
 import base64
 import time
@@ -16,7 +19,10 @@ from app.services.webcam_analysis import analyze_webcam_frame
 from app.services.symptom_extractor import extract_symptoms_ner
 from app.services.dialogue_manager import generate_next_question
 from app.services.medical_agent import predict_condition
-from app.database.crud import create_session
+from app.database.crud import create_session, get_patient_embedding
+from app.vision.face_recognition import verify_face
+from app.database.security_crud import create_security_alert, count_unresolved_alerts
+
 
 router = APIRouter()
 
@@ -41,7 +47,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
     patient_id = -1 # to be obtained upon start message
     client_lang = "English" # Default
     total_frames = 0
+    vision_frames_count = 0
     vision_task_active = False # Flag to prevent overlapping vision tasks
+    reference_embedding = []   # For continuous authentication
+    identity_mismatch_count = 0  # Track consecutive / total mismatches in this session
+    session_restricted = False   # True when mismatches exceed threshold (3)
+
     
     async def send_tts_audio(text, language):
         """Helper to generate and send TTS audio as a background task."""
@@ -55,32 +66,99 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
         except Exception as e:
             print(f"TTS Background Task Error: {e}")
 
-    async def run_vision_analysis(img_b64):
-        nonlocal vision_task_active, total_frames, latest_emotion_metrics
+    async def run_vision_analysis(img_b64, reference_embedding=None):
+        nonlocal vision_task_active, total_frames, vision_frames_count, latest_emotion_metrics, identity_mismatch_count, session_restricted
         try:
-            # Offload CPU-bound CV tasks to a separate thread to avoid blocking the event loop (Fixes 1011 timeout)
+            # Identity Verification (Security Check)
+            if total_frames % 2 == 0:
+                if reference_embedding:
+                    print(f"DEBUG: Running identity verification for session {session_id}")
+                    is_verified, score = await asyncio.to_thread(verify_face, img_b64, reference_embedding)
+                    print(f"DEBUG: Identity verification result: {is_verified} (Score: {score:.4f})")
+                    
+                    # Optional: Send debug score to client (You can remove this later)
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        await websocket.send_text(json.dumps({
+                            "type": "status",
+                            "text": f"🛡️ Safety Check: Distance Score {score:.3f} (Limit 0.300)"
+                        }))
+
+                    if not is_verified:
+                        identity_mismatch_count += 1
+                        print(f"IDENTITY MISMATCH #{identity_mismatch_count} in session {session_id} (score={score:.4f})")
+
+                        # Persist alert to database asynchronously
+                        try:
+                            await asyncio.to_thread(
+                                create_security_alert,
+                                db,
+                                session_id,
+                                patient_id if patient_id != -1 else 0,
+                                round(float(score), 4),
+                                "FACE_MISMATCH",
+                                f"Unauthorized person detected. Distance score: {score:.4f}",
+                            )
+                        except Exception as db_err:
+                            print(f"Security alert DB write error: {db_err}")
+
+                        # Compute restriction flag (lock after 3 unresolved mismatches)
+                        restrict = identity_mismatch_count >= 3
+                        if restrict:
+                            session_restricted = True
+
+                        if websocket.client_state == WebSocketState.CONNECTED:
+                            await websocket.send_text(json.dumps({
+                                "type": "identity_alert",
+                                "message": "SECURITY ALERT: Unauthorized person detected during consultation.",
+                                "score": round(float(score), 4),
+                                "mismatch_count": identity_mismatch_count,
+                                "restrict": restrict,
+                            }))
+
+                else:
+                    print(f"DEBUG: Skipping identity verification - no reference embedding yet.")
+
+
+            
+            # Offload CPU-bound CV tasks to a separate thread
+
             analysis = await asyncio.to_thread(analyze_webcam_frame, img_b64)
             
-            # Update average metrics
-            emo = analysis["emotion"]
-            flags = analysis["distress_flags"]
+            # Update average metrics only if face was detected
+            if analysis["features"].get("face_detected", True):
+                vision_frames_count += 1
+                emo = analysis["emotion"]
+                flags = analysis["distress_flags"]
+                
+                counts = latest_emotion_metrics["emotion_counts"]
+                counts[emo] = counts.get(emo, 0) + 1
+                
+                # Compute rolling averages using vision_frames_count
+                prev_eye = latest_emotion_metrics["avg_eye_strain"]
+                curr_eye = analysis["features"].get("eye_strain_score", 0)
+                latest_emotion_metrics["avg_eye_strain"] = prev_eye + (curr_eye - prev_eye) / vision_frames_count
+                
+                prev_lip = latest_emotion_metrics["avg_lip_tension"]
+                curr_lip = analysis["features"].get("lip_tension", 0)
+                latest_emotion_metrics["avg_lip_tension"] = prev_lip + (curr_lip - prev_lip) / vision_frames_count
+                
+                latest_emotion_metrics["distress_flags"]["stress"] |= flags["stress"]
+                latest_emotion_metrics["distress_flags"]["pain"] |= flags["pain"]
+                
+                # Mature Output: Weighted Election for dominant_emotion
+                # If clinical emotions appear in > 15% of frames, prefer the most frequent clinical one.
+                # Otherwise, use the absolute majority.
+                clinical_total = sum(counts.get(e, 0) for e in ['sad', 'fear', 'angry', 'disgust'])
+                clinical_ratio = clinical_total / vision_frames_count
+                
+                if clinical_ratio > 0.15:
+                    # Filter counts to only clinical and pick max
+                    clinical_counts = {e: counts.get(e, 0) for e in ['sad', 'fear', 'angry', 'disgust']}
+                    latest_emotion_metrics["dominant_emotion"] = max(clinical_counts, key=clinical_counts.get)
+                else:
+                    latest_emotion_metrics["dominant_emotion"] = max(counts, key=counts.get)
             
-            counts = latest_emotion_metrics["emotion_counts"]
-            counts[emo] = counts.get(emo, 0) + 1
-            
-            # Compute rolling averages
             total_frames += 1
-            prev_eye = latest_emotion_metrics["avg_eye_strain"]
-            curr_eye = analysis["features"].get("eye_strain_score", 0)
-            latest_emotion_metrics["avg_eye_strain"] = prev_eye + (curr_eye - prev_eye) / total_frames
-            
-            prev_lip = latest_emotion_metrics["avg_lip_tension"]
-            curr_lip = analysis["features"].get("lip_tension", 0)
-            latest_emotion_metrics["avg_lip_tension"] = prev_lip + (curr_lip - prev_lip) / total_frames
-            
-            latest_emotion_metrics["distress_flags"]["stress"] |= flags["stress"]
-            latest_emotion_metrics["distress_flags"]["pain"] |= flags["pain"]
-            latest_emotion_metrics["dominant_emotion"] = max(counts, key=counts.get)
             
             if flags["pain"]:
                 # Check connection still open before sending
@@ -120,6 +198,23 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     patient_id = data.get("patient_id", -1)
                     patient_name = data.get("patient_name", "Guest")
                     client_lang = data.get("language", "English")
+                    
+                    # Fetch reference embedding for continuous authentication
+                    try:
+                        p_id = int(patient_id)
+                        if p_id != -1:
+                            reference_embedding = get_patient_embedding(db, p_id)
+                            print(f"DEBUG: Loaded reference embedding for patient {p_id}. Length: {len(reference_embedding)}")
+                            if reference_embedding:
+                                await websocket.send_text(json.dumps({
+                                    "type": "status",
+                                    "text": "🛡️ Identity protection active for this session."
+                                }))
+                    except (ValueError, TypeError):
+                        print(f"DEBUG: Invalid patient_id format: {patient_id}")
+
+
+
                     
                     # Auto-trigger first question naturally translated
                     GREETINGS = {
@@ -164,7 +259,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     img_b64 = data.get("image_base64", "")
                     if img_b64 and not vision_task_active:
                         vision_task_active = True
-                        asyncio.create_task(run_vision_analysis(img_b64))
+                        asyncio.create_task(run_vision_analysis(img_b64, reference_embedding))
 
                 elif msg_type == "audio_chunk":
                     # Patient sent audio explicitly or just transcribed text

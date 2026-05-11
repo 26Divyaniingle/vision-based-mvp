@@ -9,10 +9,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from '../../api/client';
 
 const ResultsScreen = ({ route, navigation }) => {
-  const { diagnosis, sessionId } = route.params;
+  const { diagnosis, sessionId, vision } = route.params;
   const [activeTab, setActiveTab] = useState('allopathic');
   const [email, setEmail] = useState('');
   const [isSending, setIsSending] = useState(false);
+
+  // Fallback for vision metrics if not passed
+  const visionMetrics = vision || diagnosis.vision || {};
+  const visionCaptured = (visionMetrics.total_frames > 0) || (visionMetrics.avg_eye_strain > 0) || (visionMetrics.avg_lip_tension > 0);
+  
+  const eyeStrain = (visionMetrics.avg_eye_strain || 0).toFixed(2);
+  const lipTension = (visionMetrics.avg_lip_tension || 0).toFixed(2);
+  const dominantEmotion = (visionMetrics.dominant_emotion || 'Neutral').toUpperCase();
 
   const handleExport = async () => {
     const url = `${BASE_URL}/report/generate_pdf?session_id=${sessionId}`;
@@ -71,6 +79,36 @@ const ResultsScreen = ({ route, navigation }) => {
                  {diagnosis.safety_passed ? 'CLINICAL SAFETY PASSED' : 'IMMEDIATE CARE ADVISED'}
                </Text>
             </View>
+          </GlassCard>
+
+          <GlassCard style={styles.metricsCard}>
+            <Text style={styles.sectionTitle}>BIO-VISUAL ANALYSIS</Text>
+            {visionCaptured ? (
+              <View>
+                <View style={styles.metricRow}>
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>EMOTION</Text>
+                    <Text style={styles.metricValue}>{dominantEmotion}</Text>
+                  </View>
+                  <View style={styles.verticalDivider} />
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>EYE STRAIN</Text>
+                    <Text style={styles.metricValue}>{eyeStrain}</Text>
+                  </View>
+                  <View style={styles.verticalDivider} />
+                  <View style={styles.metricItem}>
+                    <Text style={styles.metricLabel}>LIP TENSION</Text>
+                    <Text style={styles.metricValue}>{lipTension}</Text>
+                  </View>
+                </View>
+                <Text style={styles.metricExplanation}>* Scores range 0.0–1.0. Higher values indicate higher strain or tension.</Text>
+              </View>
+            ) : (
+              <View style={styles.noMetricContainer}>
+                <AlertTriangle color={Colors.textMuted} size={20} />
+                <Text style={styles.noMetricText}>No face analysis data captured. Please ensure your camera is clearly visible during the consultation.</Text>
+              </View>
+            )}
           </GlassCard>
 
           <View style={styles.tabHeader}>
@@ -166,6 +204,16 @@ const styles = StyleSheet.create({
   confidenceText: { color: Colors.textSecondary, fontSize: 12, textAlign: 'center' },
   safetyBadge: { marginTop: 24, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   safetyText: { fontSize: 11, fontWeight: 'bold', letterSpacing: 0.5 },
+  metricsCard: { padding: 20, marginBottom: 25 },
+  sectionTitle: { color: Colors.textSecondary, fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 15, textAlign: 'center' },
+  metricRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  metricItem: { flex: 1, alignItems: 'center' },
+  metricLabel: { color: Colors.textMuted, fontSize: 9, fontWeight: '700', marginBottom: 4 },
+  metricValue: { color: Colors.indigo, fontSize: 18, fontWeight: 'bold' },
+  verticalDivider: { width: 1, height: 25, backgroundColor: 'rgba(255,255,255,0.1)' },
+  metricExplanation: { color: Colors.textMuted, fontSize: 10, fontStyle: 'italic', marginTop: 15, textAlign: 'center' },
+  noMetricContainer: { alignItems: 'center', gap: 10, paddingVertical: 10 },
+  noMetricText: { color: Colors.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 18, paddingHorizontal: 20 },
   tabHeader: { flexDirection: 'row', marginBottom: 15, gap: 12 },
   tab: { flex: 1, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.03)', flexDirection: 'row', gap: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   activeTab: { backgroundColor: Colors.indigo, borderColor: Colors.indigo },

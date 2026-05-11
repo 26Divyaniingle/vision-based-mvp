@@ -125,9 +125,16 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
     if isinstance(med_data, str):
         import json
         try:
-            med_data = json.loads(med_data.replace("'", '"'))
+            med_data = json.loads(med_data)
         except Exception:
-            med_data = {}
+            try:
+                import ast
+                med_data = ast.literal_eval(med_data)
+            except Exception:
+                try:
+                    med_data = json.loads(med_data.replace("'", '"'))
+                except Exception:
+                    med_data = {}
 
     v = session_data.get("vision") or session_data.get("emotion_metrics") or {}
     if not isinstance(v, dict):
@@ -137,9 +144,9 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
     eye_strain  = v.get("avg_eye_strain",  v.get("eye_strain_score", 0))
     lip_tension = v.get("avg_lip_tension", v.get("lip_tension", 0))
     try: eye_strain  = float(eye_strain)
-    except Exception: eye_strain = 0.0
+    except Exception: eye_strain = 0.00
     try: lip_tension = float(lip_tension)
-    except Exception: lip_tension = 0.0
+    except Exception: lip_tension = 0.00
 
     distress = v.get("distress_flags", {})
     stress_flag = distress.get("stress", False)
@@ -178,10 +185,15 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
     # ── SECTION 2 — BIO-VISUAL ANALYSIS ───────────────────────────
     section_header("Bio-Visual Analysis")
     kv_row("Dominant Emotion:", str(emotion).title())
-    kv_row("Eye Strain Score:", f"{eye_strain:.2f}")
-    kv_row("Lip Tension Score:", f"{lip_tension:.2f}")
+    kv_row("Eye Strain Score:", f"{eye_strain:.2f} (Reflects eye fatigue/blink patterns)")
+    kv_row("Lip Tension Score:", f"{lip_tension:.2f} (Associated with focus or discomfort)")
     kv_row("Stress Detected:", "Yes" if stress_flag else "No")
     kv_row("Pain Signals:",    "Detected" if pain_flag else "None observed")
+    pdf.ln(1)
+    pdf.set_font("helvetica", "I", 8)
+    pdf.set_text_color(*TEXT_MUTED)
+    pdf.set_x(20)
+    pdf.cell(0, 5, "* Scores range from 0.0 (Neutral) to 1.0 (High Indicator).", ln=1)
 
     # ── SECTION 3 — ALLOPATHIC ────────────────────────────────────
     section_header("Allopathic Recommendations (Modern Medicine)")

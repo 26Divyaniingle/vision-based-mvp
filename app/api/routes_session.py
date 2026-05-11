@@ -8,6 +8,7 @@ from app.vision.emotion_detector import analyze_emotion
 from app.vision.eye_lip_tracker import extract_vision_features
 from app.agents.supervisor_agent import run_agentic_workflow
 import uuid
+import json
 
 router = APIRouter()
 
@@ -44,7 +45,7 @@ def process_session(req: SessionRequest, db: Session = Depends(get_db)):
         emotion_metrics=features,
         condition=result["condition"],
         confidence=result["confidence"],
-        medication=result["medication"],
+        medication=json.dumps(result["medication"]),
         safety=int(result["safety_passed"]),
         distress=False
     )

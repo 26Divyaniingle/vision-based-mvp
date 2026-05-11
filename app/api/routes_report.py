@@ -34,15 +34,38 @@ def generate_pdf(session_id: str, db: Session = Depends(get_db)):
                     if isinstance(med_parsed_temp, dict):
                         med_parsed.update(med_parsed_temp)
                 except:
-                    # Fallback for single-quoted strings from DB
+                    # Fallback for single-quoted strings from DB (safely)
                     try:
-                        med_parsed_temp = json.loads(medication_raw.replace("'", '"'))
+                        import ast
+                        med_parsed_temp = ast.literal_eval(medication_raw)
                         if isinstance(med_parsed_temp, dict):
                             med_parsed.update(med_parsed_temp)
                     except:
-                        pass
+                        # Final resort attempt
+                        try:
+                            med_parsed_temp = json.loads(medication_raw.replace("'", '"'))
+                            if isinstance(med_parsed_temp, dict):
+                                med_parsed.update(med_parsed_temp)
+                        except:
+                            pass
             elif isinstance(medication_raw, dict):
                 med_parsed.update(medication_raw)
+
+        # Same parsing safety for emotion_metrics
+        emo_raw = db_session.emotion_metrics
+        emo_parsed = {}
+        if emo_raw:
+            if isinstance(emo_raw, str):
+                try: emo_parsed = json.loads(emo_raw)
+                except:
+                    try:
+                        import ast
+                        emo_parsed = ast.literal_eval(emo_raw)
+                    except:
+                        try: emo_parsed = json.loads(emo_raw.replace("'", '"'))
+                        except: pass
+            elif isinstance(emo_raw, dict):
+                emo_parsed = emo_raw
 
         # Convert DB object to dict for the generator
         session_data = {
@@ -52,7 +75,7 @@ def generate_pdf(session_id: str, db: Session = Depends(get_db)):
             "prevention": med_parsed.get("prevention", []),
             "symptoms": db_session.symptoms or [],
             "transcript": db_session.transcript or [],
-            "emotion_metrics": db_session.emotion_metrics or {},
+            "emotion_metrics": emo_parsed,
             "safety_passed": bool(db_session.safety_check_passed)
         }
         
@@ -98,13 +121,34 @@ def email_pdf(session_id: str, email: str, background_tasks: BackgroundTasks, db
                         med_parsed.update(med_parsed_temp)
                 except:
                     try:
-                        med_parsed_temp = json.loads(medication_raw.replace("'", '"'))
+                        import ast
+                        med_parsed_temp = ast.literal_eval(medication_raw)
                         if isinstance(med_parsed_temp, dict):
                             med_parsed.update(med_parsed_temp)
                     except:
-                        pass
+                        try:
+                            med_parsed_temp = json.loads(medication_raw.replace("'", '"'))
+                            if isinstance(med_parsed_temp, dict):
+                                med_parsed.update(med_parsed_temp)
+                        except:
+                            pass
             elif isinstance(medication_raw, dict):
                 med_parsed.update(medication_raw)
+
+        emo_raw = db_session.emotion_metrics
+        emo_parsed = {}
+        if emo_raw:
+            if isinstance(emo_raw, str):
+                try: emo_parsed = json.loads(emo_raw)
+                except:
+                    try:
+                        import ast
+                        emo_parsed = ast.literal_eval(emo_raw)
+                    except:
+                        try: emo_parsed = json.loads(emo_raw.replace("'", '"'))
+                        except: pass
+            elif isinstance(emo_raw, dict):
+                emo_parsed = emo_raw
 
         session_data = {
             "condition": db_session.predicted_condition or "Unknown",
@@ -113,7 +157,7 @@ def email_pdf(session_id: str, email: str, background_tasks: BackgroundTasks, db
             "prevention": med_parsed.get("prevention", []),
             "symptoms": db_session.symptoms or [],
             "transcript": db_session.transcript or [],
-            "emotion_metrics": db_session.emotion_metrics or {},
+            "emotion_metrics": emo_parsed,
             "safety_passed": bool(db_session.safety_check_passed)
         }
         pdf_bytes = generate_session_pdf_bytes(session_data, patient_name=patient_name)

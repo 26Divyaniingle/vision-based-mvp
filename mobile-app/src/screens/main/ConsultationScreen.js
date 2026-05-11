@@ -8,6 +8,7 @@ import { Colors, Typography, Spacing, Radii, Shadows } from '../../theme';
 import GlassCard from '../../components/GlassCard';
 import AnimatedWaveform from '../../components/AnimatedWaveform';
 import AIStatusBanner from '../../components/AIStatusBanner';
+import SecurityAlertOverlay from '../../components/SecurityAlertOverlay';
 import { buildWsUrl } from '../../api/report';
 
 const ConsultationScreen = ({ route, navigation }) => {
@@ -26,6 +27,13 @@ const ConsultationScreen = ({ route, navigation }) => {
   const [currentPhase, setCurrentPhase] = useState(null);
   const [isTextMode, setIsTextMode] = useState(false);
   const [textInput, setTextInput] = useState('');
+
+  // ── Security Alert State ───────────────────────────────────────────────────
+  const [securityAlertVisible, setSecurityAlertVisible] = useState(false);
+  const [securityMismatchCount, setSecurityMismatchCount] = useState(0);
+  const [securityScore, setSecurityScore] = useState(0);
+  const [sessionRestricted, setSessionRestricted] = useState(false);
+  // ──────────────────────────────────────────────────────────────────────────
   const reconnectTimeout = useRef(null);
   const reconnectAttempts = useRef(0);
   const heartbeatInterval = useRef(null);
@@ -157,20 +165,44 @@ const ConsultationScreen = ({ route, navigation }) => {
             setMessages(prev => [...prev, { role: 'status', text: data.text }]);
           }
           break;
+        case 'identity_alert':
+          // Update security state with data from backend
+          setSecurityScore(data.score || 0);
+          setSecurityMismatchCount(data.mismatch_count || 1);
+          if (data.restrict) {
+            setSessionRestricted(true);
+          }
+          // Always show the professional overlay
+          setSecurityAlertVisible(true);
+          // Also log to chat as status message
+          setMessages(prev => [...prev, {
+            role: 'status',
+            text: `🛡️ Security Alert #${data.mismatch_count || 1}: Identity mismatch detected (score: ${(data.score || 0).toFixed(3)})`,
+          }]);
+          break;
         case 'finalize':
           setIsAiProcessing(false);
           setIsFinalizing(true);
           setCurrentPhase('finalizing');
           setTimeout(() => {
-            navigation.replace('Results', { diagnosis: data.diagnosis, sessionId });
+            navigation.replace('Results', { 
+                diagnosis: data.diagnosis, 
+                sessionId,
+                vision: data.vision 
+            });
           }, 2000);
           break;
+
       }
     };
 
 
     ws.current.onerror = (e) => {
-      console.error('WebSocket Error:', e.message);
+      console.error('WebSocket Error Details:', {
+        message: e.message,
+        type: e.type,
+        target: e.target ? 'WebSocket Object' : 'null'
+      });
     };
 
     ws.current.onclose = (e) => {
@@ -194,9 +226,12 @@ const ConsultationScreen = ({ route, navigation }) => {
     frameInterval.current = setInterval(async () => {
       if (cameraRef.current && ws.current && ws.current.readyState === WebSocket.OPEN) {
         try {
-          const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.2, scale: 0.4 });
+          // Increased quality and scale for better MediaPipe detection
+          const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7, scale: 0.8 });
           ws.current.send(JSON.stringify({ type: 'video_frame', image_base64: photo.base64 }));
-        } catch (e) {}
+        } catch (e) {
+          console.warn('Camera sampling error:', e);
+        }
       }
     }, 5000);
   };
@@ -292,12 +327,22 @@ const ConsultationScreen = ({ route, navigation }) => {
             <Activity color={Colors.emerald} size={16} />
             <Text style={styles.metricValue}>{metrics.emotion.toUpperCase()}</Text>
           </GlassCard>
-          {metrics.stress && (
-            <View style={styles.alarmBadge}>
-              <AlertCircle color="#fff" size={14} />
-              <Text style={styles.alarmText}>STRESS DETECTED</Text>
-            </View>
-          )}
+          <View style={styles.rightMetrics}>
+            {/* Security status indicator */}
+            {securityMismatchCount > 0 && (
+              <View style={[styles.securityBadge, sessionRestricted && styles.securityBadgeLocked]}>
+                <Text style={styles.securityBadgeText}>
+                  {sessionRestricted ? '🔒 LOCKED' : `🛡️ ${securityMismatchCount} ALERT${securityMismatchCount > 1 ? 'S' : ''}`}
+                </Text>
+              </View>
+            )}
+            {metrics.stress && (
+              <View style={styles.alarmBadge}>
+                <AlertCircle color="#fff" size={14} />
+                <Text style={styles.alarmText}>STRESS DETECTED</Text>
+              </View>
+            )}
+          </View>
         </View>
       </View>
 
@@ -403,6 +448,34 @@ const ConsultationScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* ── Security Alert Overlay ────────────────────────────────────────────────── */}
+      <SecurityAlertOverlay
+        visible={securityAlertVisible}
+        mismatchCount={securityMismatchCount}
+        score={securityScore}
+        restricted={sessionRestricted}
+        patientId={patient?.id}
+        sessionId={sessionId}
+        onDismiss={() => {
+          // Non-restricted: user acknowledges and continues
+          setSecurityAlertVisible(false);
+        }}
+        onVerified={() => {
+          // Successful re-verification — clear restriction and close overlay
+          setSecurityAlertVisible(false);
+          setSessionRestricted(false);
+          setMessages(prev => [...prev, {
+            role: 'status',
+            text: '✅ Identity re-verified. Consultation access restored.',
+          }]);
+        }}
+        onEndSession={() => {
+          setSecurityAlertVisible(false);
+          navigation.goBack();
+        }}
+      />
+      {/* ───────────────────────────────────────────────────────────────────── */}
     </View>
   );
 };
@@ -411,11 +484,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   videoSection: { height: '40%', backgroundColor: '#000' },
   camera: { flex: 1 },
-  metricsOverlay: { position: 'absolute', top: 50, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between' },
+  metricsOverlay: { position: 'absolute', top: 50, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   metricCard: { padding: 10, minWidth: 100, alignItems: 'center', flexDirection: 'row', gap: 6 },
   metricValue: { color: Colors.emerald, fontSize: 13, fontWeight: 'bold' },
+  rightMetrics: { flexDirection: 'column', alignItems: 'flex-end', gap: 6 },
   alarmBadge: { backgroundColor: Colors.rose, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6 },
   alarmText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  securityBadge: { backgroundColor: 'rgba(245,158,11,0.85)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(245,158,11,0.4)' },
+  securityBadgeLocked: { backgroundColor: 'rgba(244,63,94,0.85)', borderColor: 'rgba(244,63,94,0.4)' },
+  securityBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
   interactionSection: { flex: 1, backgroundColor: Colors.bg, borderTopLeftRadius: 30, borderTopRightRadius: 30, marginTop: -30, paddingTop: 20 },
   chatArea: { flex: 1, paddingHorizontal: 20 },
   msgWrapper: { width: '100%', marginVertical: 8 },

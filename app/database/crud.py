@@ -96,3 +96,15 @@ def get_session_by_id(db: Session, session_id: str):
 
 def get_sessions_by_patient_id(db: Session, patient_id: int):
     return db.query(SessionModel).filter(SessionModel.patient_id == patient_id).order_by(SessionModel.created_at.desc()).all()
+
+def get_patient_embedding(db: Session, patient_id: int) -> list:
+    """Fetch the face embedding for a patient and return as a list."""
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if patient and patient.face_embedding:
+        import json
+        try:
+            return json.loads(patient.face_embedding)
+        except:
+            return []
+    return []
+

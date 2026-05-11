@@ -27,3 +27,28 @@ def get_face_embedding(image_base64: str) -> list:
     except Exception as e:
         print(f"Deepface error: {e}")
     return []
+
+def verify_face(current_image_b64: str, reference_embedding: list) -> bool:
+    """
+    Verifies if the face in current_image_b64 matches the reference_embedding.
+    Returns True if match, False otherwise.
+    """
+    if not reference_embedding:
+        return True # Can't verify if no reference exists
+        
+    current_embedding = get_face_embedding(current_image_b64)
+    if not current_embedding:
+        return False # No face detected in current frame
+        
+    # Calculate cosine similarity
+    # Cosine distance = 1 - (A . B) / (||A|| * ||B||)
+    a = np.array(current_embedding)
+    b = np.array(reference_embedding)
+    
+    # Simple dot product for unit vectors (DeepFace embeddings are usually normalized)
+    distance = 1 - np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    # Stricter threshold for Facenet (0.3 instead of 0.4)
+    # distance < 0.3 means it's the same person
+    return distance < 0.3, distance
+
+

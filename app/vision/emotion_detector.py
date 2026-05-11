@@ -22,6 +22,8 @@ def analyze_emotion(image_base64: str) -> str:
         Returns 'neutral' if emotion detection fails
     """
     # Decode the base64 image to a numpy array
+    if "," in image_base64:
+        image_base64 = image_base64.split(",")[1]
     nparr = np.frombuffer(base64.b64decode(image_base64), np.uint8)
     
     # Decode the image array using OpenCV (reads as BGR format)
@@ -29,15 +31,36 @@ def analyze_emotion(image_base64: str) -> str:
     
     try:
         # Use DeepFace to analyze emotions
-        # actions=['emotion'] - only analyze emotions (speeds up processing)
-        # enforce_detection=False - continue even if face detection is uncertain
-        # detector_backend="opencv" - use OpenCV for face detection (faster than alternatives)
-        objs = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False, detector_backend="opencv")
+        # detector_backend="mediapipe" is generally more accurate than opencv for facial expressions
+        objs = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False, detector_backend="mediapipe")
         
-        # Check if any faces were detected and analyzed
         if len(objs) > 0:
-            # Return the dominant (most likely) emotion for the first detected face
-            return objs[0]['dominant_emotion']
+            emotion_scores = objs[0]['emotion']
+            dominant = objs[0]['dominant_emotion']
+            
+            # Maturity/Sensitivity Adjustment:
+            # DeepFace tends to over-report 'neutral'. In a clinical context, 
+            # if 'sad', 'fear', or 'angry' have significant scores, they are more relevant.
+            
+            # Clinical Priority Thresholds
+            clinical_threshold = 15.0  # If a clinical emotion is > 15%, it's significant
+            
+            clinical_emotions = ['sad', 'fear', 'angry', 'disgust']
+            best_clinical_emo = None
+            max_clinical_score = 0
+            
+            for emo in clinical_emotions:
+                score = emotion_scores.get(emo, 0)
+                if score > clinical_threshold and score > max_clinical_score:
+                    max_clinical_score = score
+                    best_clinical_emo = emo
+            
+            # If we found a significant clinical emotion, and neutral isn't overwhelming (>80%)
+            # we prefer the clinical emotion for a more 'mature' analysis.
+            if best_clinical_emo and emotion_scores.get('neutral', 0) < 80.0:
+                return best_clinical_emo
+                
+            return dominant
     except Exception as e:
         print("Emotion analysis error:", e)
     

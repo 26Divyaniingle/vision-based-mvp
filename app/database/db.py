@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import event  # Used for database event listeners
 from .models import Base, Patient, Session as SessionModel  # Import database models
+from .security_models import SecurityAlert  # Security alerts table — must be imported so Base sees it
 from app.config import settings
 from app.utils.export_csv import export_table_to_csv  # Utility to export data to CSV
 

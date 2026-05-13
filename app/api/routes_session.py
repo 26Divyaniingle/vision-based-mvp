@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database.db import get_db
-from app.database.crud import create_session, get_session_by_id, get_sessions_by_patient_id
+from app.database.crud import create_session, get_session_by_id, get_sessions_by_patient_id, check_session_limit, increment_session_count
 from app.database.models import Session as SessionModel
 from app.vision.emotion_detector import analyze_emotion
 from app.vision.eye_lip_tracker import extract_vision_features
@@ -21,6 +21,18 @@ class SessionRequest(BaseModel):
 
 @router.post("/process")
 def process_session(req: SessionRequest, db: Session = Depends(get_db)):
+    # 1. Check Usage Limit
+    limit_status = check_session_limit(db, req.patient_id)
+    if not limit_status["allowed"]:
+        raise HTTPException(
+            status_code=403, 
+            detail={
+                "error": "ACCESS_LOCKED",
+                "message": limit_status["message"],
+                "admin_email": "medsense.ai@gmail.co"
+            }
+        )
+
     # Vision Module
     emotion = analyze_emotion(req.image_base64)
     features = extract_vision_features(req.image_base64)
@@ -49,6 +61,9 @@ def process_session(req: SessionRequest, db: Session = Depends(get_db)):
         safety=int(result["safety_passed"]),
         distress=False
     )
+    
+    # 2. Increment Session Count (only after successful initialization/start)
+    increment_session_count(db, req.patient_id)
     
     return {
         "session_id": session_id,

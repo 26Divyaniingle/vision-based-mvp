@@ -37,6 +37,10 @@ class Patient(Base):
     otp_expiry = Column(DateTime, nullable=True)  # When the OTP expires
     otp_attempts = Column(Integer, default=0)  # Number of OTP verification attempts
     
+    # Usage Limiting
+    sessionCount = Column(Integer, default=0)  # Number of AI consultation sessions used
+    isLocked = Column(Boolean, default=False)  # Whether the account is locked due to limit reached
+
     # Metadata
     created_at = Column(DateTime, default=datetime.datetime.utcnow)  # Account creation timestamp
 

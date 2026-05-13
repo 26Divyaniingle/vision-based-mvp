@@ -9,6 +9,7 @@ import GlassCard from '../../components/GlassCard';
 import AnimatedWaveform from '../../components/AnimatedWaveform';
 import AIStatusBanner from '../../components/AIStatusBanner';
 import SecurityAlertOverlay from '../../components/SecurityAlertOverlay';
+import AccessLockedModal from '../../components/AccessLockedModal';
 import { buildWsUrl } from '../../api/report';
 
 const ConsultationScreen = ({ route, navigation }) => {
@@ -33,6 +34,7 @@ const ConsultationScreen = ({ route, navigation }) => {
   const [securityMismatchCount, setSecurityMismatchCount] = useState(0);
   const [securityScore, setSecurityScore] = useState(0);
   const [sessionRestricted, setSessionRestricted] = useState(false);
+  const [accessLockedVisible, setAccessLockedVisible] = useState(route.params?.isLocked || false);
   // ──────────────────────────────────────────────────────────────────────────
   const reconnectTimeout = useRef(null);
   const reconnectAttempts = useRef(0);
@@ -133,6 +135,9 @@ const ConsultationScreen = ({ route, navigation }) => {
       const data = JSON.parse(e.data);
       
       switch (data.type) {
+        case 'access_locked':
+          setAccessLockedVisible(true);
+          break;
         case 'question':
           setIsAiProcessing(false);
           setCurrentPhase(null); // will flip to 'speaking' when audio starts
@@ -474,6 +479,13 @@ const ConsultationScreen = ({ route, navigation }) => {
           setSecurityAlertVisible(false);
           navigation.goBack();
         }}
+      />
+      {/* ───────────────────────────────────────────────────────────────────── */}
+      
+      {/* ── Usage Limit Overlay ────────────────────────────────────────────────── */}
+      <AccessLockedModal 
+        visible={accessLockedVisible} 
+        onBack={() => navigation.goBack()} 
       />
       {/* ───────────────────────────────────────────────────────────────────── */}
     </View>

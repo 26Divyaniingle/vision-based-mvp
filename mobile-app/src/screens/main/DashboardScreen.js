@@ -59,6 +59,12 @@ const DashboardScreen = ({ navigation }) => {
   ];
 
   const handleStart = () => {
+    if (user.isLocked || user.sessionCount >= 2) {
+      // Access Locked - handle in ConsultationScreen or show message here
+      // For now, we allow navigation but ConsultationScreen will show the lock modal
+      navigation.navigate('Consultation', { sessionId: `sess_${Date.now()}`, language, patient: user, isLocked: true });
+      return;
+    }
     const sessionId = `sess_${Date.now()}`;
     navigation.navigate('Consultation', { sessionId, language, patient: user });
   };
@@ -90,6 +96,16 @@ const DashboardScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <GlassCard style={styles.startCard}>
           <Text style={styles.shimmerTitle}>Virtual Clinic</Text>
+          
+          {/* Session Limit Display */}
+          <View style={styles.sessionLimitBadge}>
+            <Text style={[styles.sessionLimitText, (user.isLocked || user.sessionCount >= 2) && styles.expiredText]}>
+              {user.isLocked || user.sessionCount >= 2 
+                ? "Trial Expired" 
+                : `Free Sessions Remaining: ${2 - (user.sessionCount || 0)}/2`}
+            </Text>
+          </View>
+
           <Text style={styles.startInfo}>Connect with our Medical AI for a real-time health assessment.</Text>
 
           <View style={styles.langContainer}>
@@ -252,6 +268,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 12,
     elevation: 10,
+  },
+  sessionLimitBadge: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  sessionLimitText: {
+    color: Colors.indigo,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  expiredText: {
+    color: Colors.rose,
   },
 });
 

@@ -108,3 +108,52 @@ def get_patient_embedding(db: Session, patient_id: int) -> list:
             return []
     return []
 
+def increment_session_count(db: Session, patient_id: int):
+    """
+    Increments the session count for a patient.
+    If the count reaches 2, the account is automatically locked.
+    Uses atomic update to avoid race conditions.
+    """
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if patient:
+        patient.sessionCount += 1
+        if patient.sessionCount >= 2:
+            patient.isLocked = True
+        db.commit()
+        db.refresh(patient)
+        return patient
+    return None
+
+def reset_user_access(db: Session, patient_id: int):
+    """
+    Resets the session count and unlocks the account.
+    Used by administrators to restore access.
+    """
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if patient:
+        patient.sessionCount = 0
+        patient.isLocked = False
+        db.commit()
+        db.refresh(patient)
+        return True
+    return False
+
+def check_session_limit(db: Session, patient_id: int) -> dict:
+    """
+    Checks if a patient is allowed to start a new session.
+    Returns a dict with 'allowed' (bool) and 'message' (str).
+    """
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not patient:
+        return {"allowed": False, "message": "Patient not found."}
+    
+    if patient.isLocked:
+        return {"allowed": False, "message": "Free consultation limit reached. Please contact administrator."}
+    
+    if patient.sessionCount >= 2:
+        # Safety check: ensure isLocked is sync'd
+        patient.isLocked = True
+        db.commit()
+        return {"allowed": False, "message": "Free consultation limit reached. Please contact administrator."}
+    
+    return {"allowed": True, "remaining": 2 - patient.sessionCount}

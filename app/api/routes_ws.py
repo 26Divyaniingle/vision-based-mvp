@@ -260,19 +260,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     except (ValueError, TypeError):
                         print(f"DEBUG: Invalid patient_id format: {patient_id}")
 
-<<<<<<< HEAD
-                    # NEW: Fetch historical context for smarter dialogue
-                    if p_id != -1:
-                        try:
-                            historical_context = HistoryService.get_patient_history_summary(db, p_id)
-                            # print(f"DEBUG: Loaded historical context: {len(historical_context)} chars")
-                        except Exception as hist_err:
-                            print(f"Error loading history: {hist_err}")
-                            historical_context = ""
-=======
                     # --- SESSION LIMIT CHECK ---
-                    if patient_id != -1:
-                        limit_status = check_session_limit(db, int(patient_id))
+                    if p_id != -1:
+                        limit_status = check_session_limit(db, p_id)
                         if not limit_status["allowed"]:
                             await websocket.send_text(json.dumps({
                                 "type": "access_locked",
@@ -283,9 +273,16 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                             break
                         
                         # Increment count as session has "started successfully"
-                        increment_session_count(db, int(patient_id))
+                        increment_session_count(db, p_id)
                     # ---------------------------
->>>>>>> 710cd0819c3d8f94467bf932ae43318026e6516d
+
+                    # Fetch historical context for smarter dialogue
+                    if p_id != -1:
+                        try:
+                            historical_context = HistoryService.get_patient_history_summary(db, p_id)
+                        except Exception as hist_err:
+                            print(f"Error loading history: {hist_err}")
+                            historical_context = ""
 
 
 

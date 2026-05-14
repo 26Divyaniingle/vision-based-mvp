@@ -331,14 +331,12 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 10,
   },
-<<<<<<< HEAD
   transcriberCard: { padding: 20, marginBottom: 25, backgroundColor: 'rgba(99,102,241,0.05)', borderColor: 'rgba(99,102,241,0.2)', borderWidth: 1 },
   transcriberHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   transcriberTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
   transcriberInfo: { color: Colors.textSecondary, fontSize: 13, marginBottom: 15, lineHeight: 18 },
   transcriberBtn: { backgroundColor: Colors.indigo, padding: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   transcriberBtnText: { color: '#fff', fontWeight: 'bold' },
-=======
   sessionLimitBadge: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 12,
@@ -358,7 +356,6 @@ const styles = StyleSheet.create({
   expiredText: {
     color: Colors.rose,
   },
->>>>>>> 710cd0819c3d8f94467bf932ae43318026e6516d
 });
 
 export default DashboardScreen;

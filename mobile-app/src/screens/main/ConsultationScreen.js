@@ -161,22 +161,15 @@ const ConsultationScreen = ({ route, navigation }) => {
   // Security
   const [securityAlertVisible,  setSecurityAlertVisible]  = useState(false);
   const [securityMismatchCount, setSecurityMismatchCount] = useState(0);
-<<<<<<< HEAD
   const [securityScore,         setSecurityScore]         = useState(0);
   const [sessionRestricted,     setSessionRestricted]     = useState(false);
-  const [cameraRefreshKey,     setCameraRefreshKey]      = useState(0); // Used to nudge the camera back to life
+  const [accessLockedVisible,   setAccessLockedVisible]   = useState(route.params?.isLocked || false);
+  const [cameraRefreshKey,      setCameraRefreshKey]      = useState(0); // Used to nudge the camera back to life
 
   const ws                = useRef(null);
   const cameraRef         = useRef(null);   // hidden — used only for frame capture
   const chatScrollRef     = useRef(null);
   const reconnectTimeout  = useRef(null);
-=======
-  const [securityScore, setSecurityScore] = useState(0);
-  const [sessionRestricted, setSessionRestricted] = useState(false);
-  const [accessLockedVisible, setAccessLockedVisible] = useState(route.params?.isLocked || false);
-  // ──────────────────────────────────────────────────────────────────────────
-  const reconnectTimeout = useRef(null);
->>>>>>> 710cd0819c3d8f94467bf932ae43318026e6516d
   const reconnectAttempts = useRef(0);
   const heartbeatInterval = useRef(null);
   const frameInterval     = useRef(null);
@@ -697,17 +690,12 @@ const ConsultationScreen = ({ route, navigation }) => {
           navigation.goBack();
         }}
       />
-<<<<<<< HEAD
-=======
-      {/* ───────────────────────────────────────────────────────────────────── */}
-      
       {/* ── Usage Limit Overlay ────────────────────────────────────────────────── */}
       <AccessLockedModal 
         visible={accessLockedVisible} 
         onBack={() => navigation.goBack()} 
       />
       {/* ───────────────────────────────────────────────────────────────────── */}
->>>>>>> 710cd0819c3d8f94467bf932ae43318026e6516d
     </View>
   );
 };

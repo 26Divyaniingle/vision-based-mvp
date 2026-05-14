@@ -69,4 +69,10 @@ class Session(Base):
     # Metadata
     created_at = Column(DateTime, default=datetime.datetime.utcnow)  # Session start timestamp
 
+# NEW FEATURE MODELS (Imported to register with Base)
+try:
+    from app.modules.smart_transcriber.models.transcriber_models import SmartConsultation
+except ImportError:
+    pass
+
 

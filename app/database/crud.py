@@ -104,7 +104,7 @@ def get_patient_embedding(db: Session, patient_id: int) -> list:
         import json
         try:
             return json.loads(patient.face_embedding)
-        except:
+        except Exception:
             return []
     return []
 

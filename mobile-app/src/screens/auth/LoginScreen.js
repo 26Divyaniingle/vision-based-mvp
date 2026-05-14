@@ -45,7 +45,7 @@ const LoginScreen = ({ navigation }) => {
     if (!cameraRef.current) return;
     setIsScanning(true);
     try {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.5 });
+      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7 });
       const res = await loginFace(photo.base64);
       if (res.data.success) {
         await saveUser(res.data);

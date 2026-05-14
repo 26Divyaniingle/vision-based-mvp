@@ -150,7 +150,7 @@ const SecurityStatusPanel = ({ patientId, refresh }) => {
           ) : (
             alerts.slice(0, 5).map((a) => (
               <View key={a.id} style={styles.alertItem}>
-                <View style={styles.alertDot(a.resolved)} />
+                <View style={[styles.alertDot, { backgroundColor: a.resolved ? '#10b981' : '#f59e0b' }]} />
                 <View style={styles.alertContent}>
                   <Text style={styles.alertType}>
                     {a.alert_type === 'FACE_MISMATCH' ? '⚠️ Face Mismatch' : '🔄 Re-Verify Failed'}
@@ -244,13 +244,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 10,
   },
-  alertDot: (resolved) => ({
+  alertDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: resolved ? '#10b981' : '#f59e0b',
     marginTop: 4,
-  }),
+  },
   alertContent: { flex: 1 },
   alertType: { color: Colors.textPrimary, fontSize: 12, fontWeight: '600', marginBottom: 3 },
   alertMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },

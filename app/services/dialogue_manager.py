@@ -9,13 +9,14 @@ This makes interviews more natural and efficient - we don't ask unnecessary ques
 from app.core.llm_engine import generate_response
 import json
 
-async def generate_next_question(conversation_history: list, symptoms: list, active_emotion: str, patient_name: str = "Guest", language: str = "English", question_count: int = 1) -> str:
+async def generate_next_question(conversation_history: list, symptoms: list, active_emotion: str, patient_name: str = "Guest", language: str = "English", question_count: int = 1, historical_context: str = "") -> str:
     """
     Generate the next interview question dynamically based on context.
     The AI decides what to ask based on:
     - Conversation history (what's already been discussed)
     - Extracted symptoms so far
     - Patient's current emotion (to show empathy)
+    - Patient's medical history (to avoid repeating known issues or identify patterns)
     
     Args:
         conversation_history: List of previous bot and patient messages
@@ -24,6 +25,7 @@ async def generate_next_question(conversation_history: list, symptoms: list, act
         patient_name: Patient's name for personalization (default "Guest")
         language: Language to use for questions (default "English")
         question_count: How many questions have been asked so far
+        historical_context: Summary of previous patient consultations (optional)
         
     Returns:
         A string containing either:
@@ -49,14 +51,18 @@ async def generate_next_question(conversation_history: list, symptoms: list, act
     Symptoms Extracted So Far: {json.dumps(symptoms)}
     Patient Emotion: {active_emotion}
 
+    Patient Medical History (Summary of past sessions):
+    {historical_context if historical_context else "No history available."}
+
     Task: Generate ONE concise follow-up question.
     1. Acknowledge emotion briefly ONLY if it's the FIRST time you are noticing a major emotional shift. 
     2. ABSOLUTELY FORBIDDEN: Do not repeat emotional acknowledgments, empathy statements, or observations about the user's expression (like "I see you are surprised", "I noticed you look upset", etc.) if you or the user have already addressed them earlier in the conversation history.
     3. Ask a logical follow-up question that HAS NOT BEEN ASKED YET.
-    4. DO NOT repeat yourself or ask for information already provided in the history.
+    4. DO NOT repeat yourself or ask for information already provided in the history or historical context.
     5. Each response must be unique and move the consultation forward.
     6. If you have enough information for a diagnosis AND you have asked at least 7 questions, respond only with "INTERVIEW_COMPLETE".
     7. If this is question number 8, YOU MUST respond only with "INTERVIEW_COMPLETE".
+    8. Use the historical context to provide more intelligent and relevant questions (e.g. if the patient previously had chest pain, and current symptoms are breathing discomfort, ask if the pain returned).
 
     CRITICAL: Speak in {language}. 
     Return ONLY the question or the flag.

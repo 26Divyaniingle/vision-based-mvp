@@ -11,6 +11,8 @@ import DashboardScreen from './src/screens/main/DashboardScreen';
 import ConsultationScreen from './src/screens/main/ConsultationScreen';
 import ResultsScreen from './src/screens/main/ResultsScreen';
 import AIChatbotScreen from './src/screens/main/AIChatbotScreen';
+import TranscriberScreen from './src/screens/main/TranscriberScreen';
+import ConsultationDetailScreen from './src/screens/main/ConsultationDetailScreen';
 
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -35,6 +37,8 @@ export default function App() {
           <Stack.Screen name="AIChatbot" component={AIChatbotScreen} />
           <Stack.Screen name="Consultation" component={ConsultationScreen} />
           <Stack.Screen name="Results" component={ResultsScreen} />
+          <Stack.Screen name="Transcriber" component={TranscriberScreen} />
+          <Stack.Screen name="ConsultationDetail" component={ConsultationDetailScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

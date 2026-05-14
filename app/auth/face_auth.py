@@ -75,8 +75,8 @@ def login_face(db: Session, image_base64: str):
         - score: Face matching score (0-1, higher = better match)
         OR error message if no match
     """
-    # Extract face embedding from the login image
-    emb = get_face_embedding(image_base64)
+    # Extract face embedding from the login image (lenient detection to prevent lockouts)
+    emb = get_face_embedding(image_base64, enforce_detection=False)
     if not emb:
         # No face detected
         return {"success": False, "msg": "No face detected"}

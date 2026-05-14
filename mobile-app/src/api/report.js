@@ -28,3 +28,18 @@ export const getHistory = (patientId) =>
  */
 export const buildWsUrl = (sessionId) =>
   `${WS_BASE}/ws/stream/${sessionId}`;
+
+/**
+ * Transcriber Endpoints
+ */
+export const startConsultation = (patientId) =>
+  client.post(`/transcriber/start`, null, { params: { patient_id: patientId } });
+
+export const stopConsultation = (consultationId) =>
+  client.post(`/transcriber/${consultationId}/stop`);
+
+export const getTranscriberHistory = (patientId) =>
+  client.get(`/transcriber/history/${patientId}`);
+
+export const buildTranscriberWsUrl = (consultationId) =>
+  `${WS_BASE}/transcriber/ws/${consultationId}`;

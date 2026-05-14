@@ -6,6 +6,7 @@ It also handles model pre-loading during startup to prevent timeouts on first re
 
 from fastapi import FastAPI
 from app.api import routes_auth, routes_session, routes_report, routes_interview, routes_ws, routes_ai_assistant, routes_security
+from app.modules.smart_transcriber.controllers import transcriber_routes
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from contextlib import asynccontextmanager
@@ -30,17 +31,17 @@ async def lifespan(app: FastAPI):
         _, buffer = cv2.imencode('.jpg', dummy_img)
         dummy_b64 = base64.b64encode(buffer).decode('utf-8')
         
-        # Pre-loading commented out temporarily to ensure fast startup after fixes
-        # await asyncio.to_thread(analyze_emotion, dummy_b64)
-        # from app.vision.face_recognition import get_face_embedding
-        # await asyncio.to_thread(get_face_embedding, dummy_b64)
+        # Pre-load vision models
+        from app.vision.emotion_detector import analyze_emotion
+        from app.vision.face_recognition import get_face_embedding
+        await asyncio.to_thread(analyze_emotion, dummy_b64)
+        await asyncio.to_thread(get_face_embedding, dummy_b64)
 
         # Pre-load Medical RAG models (SentenceTransformer + FAISS)
-        # This avoids several seconds of delay during the first interview turn
-        # from medical_rag.disease_predictor import predict_disease
-        # from medical_rag.medicine_retriever import retrieve_medicines
-        # await asyncio.to_thread(predict_disease, "fever")
-        # await asyncio.to_thread(retrieve_medicines, "Flu")
+        from medical_rag.disease_predictor import predict_disease
+        from medical_rag.medicine_retriever import retrieve_medicines
+        await asyncio.to_thread(predict_disease, "fever")
+        await asyncio.to_thread(retrieve_medicines, "Flu")
         
         print("Models pre-loaded successfully.")
     except Exception as e:
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI):
     # Yield control back to the app (it now runs)
     yield
     # Cleanup code would go here after app shuts down
+    # (Optional: Close DB connections/sessions if needed, but FastAPI+SQLAlchemy usually handles it)
 
 # Create the FastAPI application instance with custom startup/shutdown handler
 app = FastAPI(title="Vision Agentic AI MVP", lifespan=lifespan)
@@ -72,6 +74,7 @@ app.include_router(routes_interview.router, prefix="/interview", tags=["intervie
 app.include_router(routes_ws.router, prefix="/ws", tags=["websocket"])  # WebSocket endpoints for real-time communication
 app.include_router(routes_ai_assistant.router, prefix="/assistant", tags=["assistant"])  # AI Assistant endpoints
 app.include_router(routes_security.router, prefix="/security", tags=["security"])  # Face identity security alert endpoints
+app.include_router(transcriber_routes.router, prefix="/transcriber", tags=["transcriber"])  # Smart AI Medical Transcriber
 
 @app.get("/")
 def root():

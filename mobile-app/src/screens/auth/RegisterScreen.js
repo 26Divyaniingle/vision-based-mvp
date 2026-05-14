@@ -27,7 +27,7 @@ const RegisterScreen = ({ navigation }) => {
     if (!cameraRef.current) return;
     setIsCapturing(true);
     try {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.5 });
+      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7 });
       const res = await registerFace(form.name, form.age, form.phone, form.email, photo.base64);
       
       if (res.data.success) {

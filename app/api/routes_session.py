@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database.db import get_db
-from app.database.crud import create_session, get_session_by_id, get_sessions_by_patient_id
+from app.database.crud import create_session
 from app.database.models import Session as SessionModel
 from app.vision.emotion_detector import analyze_emotion
 from app.vision.eye_lip_tracker import extract_vision_features
@@ -20,7 +20,7 @@ class SessionRequest(BaseModel):
     image_base64: str  # vision cap
 
 @router.post("/process")
-def process_session(req: SessionRequest, db: Session = Depends(get_db)):
+async def process_session(req: SessionRequest, db: Session = Depends(get_db)):
     # Vision Module
     emotion = analyze_emotion(req.image_base64)
     features = extract_vision_features(req.image_base64)
@@ -32,7 +32,7 @@ def process_session(req: SessionRequest, db: Session = Depends(get_db)):
         "weight": req.weight,
         "age": req.age
     }
-    result = run_agentic_workflow(form_data, features)
+    result = await run_agentic_workflow(form_data, features)
     
     # Save Session
     session_id = f"sess_{uuid.uuid4().hex[:8]}"
@@ -61,16 +61,29 @@ def process_session(req: SessionRequest, db: Session = Depends(get_db)):
 def list_sessions(patient_id: int = Query(...), db: Session = Depends(get_db)):
     """List all sessions for a specific patient (used by Mobile App)."""
     sessions = db.query(SessionModel).filter(SessionModel.patient_id == patient_id).order_by(SessionModel.created_at.desc()).all()
-    # Format for the app
+    
+    def safe_parse_medication(med_str):
+        if not med_str:
+            return {"allopathic": [], "ayurvedic": [], "prevention": []}
+        try:
+            return json.loads(med_str)
+        except Exception:
+            # Fallback if it was saved as a Python string representation or is corrupt
+            try:
+                # Basic attempt to fix single quotes if it's a python dict literal
+                return json.loads(med_str.replace("'", '"'))
+            except Exception:
+                return {"allopathic": [], "ayurvedic": [], "prevention": [], "raw": med_str}
+
     return [{
         "session_id": s.session_id,
         "condition": s.predicted_condition,
         "confidence": s.confidence,
         "symptoms": s.symptoms,
         "emotion_metrics": s.emotion_metrics,
-        "safety": bool(s.safety_check_passed),
+        "safety_passed": bool(s.safety_check_passed),
         "created_at": s.created_at,
-        "medication": s.medication
+        "medication": safe_parse_medication(s.medication)
     } for s in sessions]
 
 @router.get("/{session_id}")
@@ -79,12 +92,24 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
     s = db.query(SessionModel).filter(SessionModel.session_id == session_id).first()
     if not s:
         raise HTTPException(404, "Session not found")
+        
+    def safe_parse_medication(med_str):
+        if not med_str:
+            return {"allopathic": [], "ayurvedic": [], "prevention": []}
+        try:
+            return json.loads(med_str)
+        except Exception:
+            try:
+                return json.loads(med_str.replace("'", '"'))
+            except Exception:
+                return {"allopathic": [], "ayurvedic": [], "prevention": [], "raw": med_str}
+
     return {
         "session_id": s.session_id,
         "patient_id": s.patient_id,
         "condition": s.predicted_condition,
         "confidence": s.confidence,
-        "medication": s.medication,
+        "medication": safe_parse_medication(s.medication),
         "symptoms": s.symptoms,
         "vision": s.emotion_metrics,
         "safety_passed": bool(s.safety_check_passed),

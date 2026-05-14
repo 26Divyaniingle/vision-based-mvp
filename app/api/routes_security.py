@@ -110,19 +110,25 @@ def re_verify_identity(req: ReVerifyRequest, db: DBSession = Depends(get_db)):
     if not reference_embedding:
         raise HTTPException(status_code=404, detail="No face embedding found for this patient.")
 
-    # Step 2: Compare faces
     try:
-        is_verified, score = verify_face(req.image_base64, reference_embedding)
+        # Use lenient detection for manual re-verification to help the user get back in
+        is_verified, score = verify_face(req.image_base64, reference_embedding, enforce_detection=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")
 
-    if is_verified:
+    if is_verified is True:
         # Step 3: Resolve pending alerts for this session
         resolve_security_alert(db, req.session_id)
         return {
             "verified": True,
             "score": round(float(score), 4),
             "message": "Identity verified. Consultation access restored.",
+        }
+    elif is_verified is None:
+        return {
+            "verified": False,
+            "score": 0.0,
+            "message": "No face detected in the frame. Please look directly at the camera.",
         }
     else:
         # Log the failed re-verification attempt as a new alert

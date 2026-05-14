@@ -22,6 +22,7 @@ from app.services.medical_agent import predict_condition
 from app.database.crud import create_session, get_patient_embedding
 from app.vision.face_recognition import verify_face
 from app.database.security_crud import create_security_alert, count_unresolved_alerts
+from app.modules.smart_transcriber.services.history_service import HistoryService
 
 
 router = APIRouter()
@@ -55,6 +56,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
     reference_embedding = []   # For continuous authentication
     identity_mismatch_count = 0  # Track consecutive / total mismatches in this session
     session_restricted = False   # True when mismatches exceed threshold (3)
+    historical_context = "" # To be loaded on start
 
     
     async def send_tts_audio(text, language):
@@ -75,52 +77,67 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
             # print(f"DEBUG: Processing vision frame {total_frames} (Session: {session_id})")
             
             # Identity Verification (Security Check)
-            if total_frames % 2 == 0:
-                if reference_embedding:
-                    print(f"DEBUG: Running identity verification for session {session_id}")
-                    is_verified, score = await asyncio.to_thread(verify_face, img_b64, reference_embedding)
-                    print(f"DEBUG: Identity verification result: {is_verified} (Score: {score:.4f})")
-                    
-                    # Optional: Send debug score to client (You can remove this later)
+            if reference_embedding:
+                is_verified, score = await asyncio.to_thread(verify_face, img_b64, reference_embedding)
+                
+                # Live security monitoring log
+                if total_frames % 20 == 0:
+                    print(f"Security check (Session: {session_id}): Score {score:.3f}")
+
+                if is_verified is False:
+                    identity_mismatch_count += 1
+                    print(f"SECURITY ALERT (Session: {session_id}): Unauthorized person access detected (score={score:.4f})")
+
+                    # Handle database alert logging
+                    try:
+                        # Call synchronously since we are already in the background task loop
+                        # but check if we should offload ONLY the IO if needed.
+                        # For now, avoid passing 'db' to to_thread
+                        create_security_alert(
+                            db,
+                            session_id,
+                            patient_id if patient_id != -1 else 0,
+                            round(float(score), 4),
+                            "UNAUTHORIZED_ACCESS",
+                            f"Unauthorized person access detected. Distance: {score:.4f}",
+                        )
+                    except Exception as db_err:
+                        print(f"Security alert DB write error: {db_err}")
+
+                    # Compute restriction (lock after 3 total mismatches)
+                    restrict = identity_mismatch_count >= 3
+                    if restrict:
+                        print(f"SESSION ENFORCEMENT: Restricting session {session_id} due to multiple identity mismatches.")
+                        session_restricted = True
+
+                    # Alert immediately on mismatch
+                    if websocket.client_state == WebSocketState.CONNECTED:
+                        await websocket.send_text(json.dumps({
+                            "type": "identity_alert",
+                            "message": "SECURITY ALERT: Unauthorized person access detected.",
+                            "score": round(float(score), 4),
+                            "mismatch_count": identity_mismatch_count,
+                            "restrict": restrict,
+                        }))
+                
+                elif is_verified is True:
+                    # Reset mismatch relay if a successful match occurs (self-healing)
+                    if identity_mismatch_count > 0:
+                        print(f"DEBUG: Identity re-verified for session {session_id}. Resetting mismatch count.")
+                        identity_mismatch_count = 0
+                        
+                elif is_verified is None:
+                    # No face detected - notify user via status message if they are waiting for an alert
                     if websocket.client_state == WebSocketState.CONNECTED:
                         await websocket.send_text(json.dumps({
                             "type": "status",
-                            "text": f"🛡️ Safety Check: Distance Score {score:.3f} (Limit 0.300)"
+                            "text": "🔍 Monitoring: No face clearly detected in frame."
                         }))
+                    if total_frames % 10 == 0:
+                        print(f"DEBUG: No face detected in vision frame for session {session_id}")
 
-                    if not is_verified:
-                        identity_mismatch_count += 1
-                        print(f"IDENTITY MISMATCH #{identity_mismatch_count} in session {session_id} (score={score:.4f})")
-
-                        # Persist alert to database asynchronously
-                        try:
-                            await asyncio.to_thread(
-                                create_security_alert,
-                                db,
-                                session_id,
-                                patient_id if patient_id != -1 else 0,
-                                round(float(score), 4),
-                                "FACE_MISMATCH",
-                                f"Unauthorized person detected. Distance score: {score:.4f}",
-                            )
-                        except Exception as db_err:
-                            print(f"Security alert DB write error: {db_err}")
-
-                        # Compute restriction flag (lock after 3 unresolved mismatches)
-                        restrict = identity_mismatch_count >= 3
-                        if restrict:
-                            session_restricted = True
-
-                        if websocket.client_state == WebSocketState.CONNECTED:
-                            await websocket.send_text(json.dumps({
-                                "type": "identity_alert",
-                                "message": "SECURITY ALERT: Unauthorized person detected during consultation.",
-                                "score": round(float(score), 4),
-                                "mismatch_count": identity_mismatch_count,
-                                "restrict": restrict,
-                            }))
-
-                else:
+            else:
+                if total_frames % 20 == 0:
                     print(f"DEBUG: Skipping identity verification - no reference embedding yet.")
 
 
@@ -166,6 +183,21 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                 
                 latest_emotion_metrics["distress_flags"]["stress"] |= flags["stress"]
                 latest_emotion_metrics["distress_flags"]["pain"] |= flags["pain"]
+
+                # ── Push live vision update to mobile sidebar ──────────────────
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    try:
+                        await websocket.send_text(json.dumps({
+                            "type": "vision_update",
+                            "emotion":      latest_emotion_metrics["dominant_emotion"],
+                            "eye_strain":   round(latest_emotion_metrics["avg_eye_strain"], 3),
+                            "lip_tension":  round(latest_emotion_metrics["avg_lip_tension"], 3),
+                            "stress":       latest_emotion_metrics["distress_flags"]["stress"],
+                            "pain":         latest_emotion_metrics["distress_flags"]["pain"],
+                        }))
+                    except Exception as ve:
+                        print(f"vision_update send error: {ve}")
+                # ───────────────────────────────────────────────────────────────
             
             total_frames += 1
             latest_emotion_metrics["total_frames"] = total_frames
@@ -209,7 +241,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     patient_name = data.get("patient_name", "Guest")
                     client_lang = data.get("language", "English")
                     
-                    # Fetch reference embedding for continuous authentication
+                    p_id = -1
                     try:
                         p_id = int(patient_id)
                         if p_id != -1:
@@ -220,8 +252,22 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                     "type": "status",
                                     "text": "🛡️ Identity protection active for this session."
                                 }))
+                            else:
+                                await websocket.send_text(json.dumps({
+                                    "type": "status",
+                                    "text": "⚠️ Identity protection inactive: No face registered."
+                                }))
                     except (ValueError, TypeError):
                         print(f"DEBUG: Invalid patient_id format: {patient_id}")
+
+                    # NEW: Fetch historical context for smarter dialogue
+                    if p_id != -1:
+                        try:
+                            historical_context = HistoryService.get_patient_history_summary(db, p_id)
+                            # print(f"DEBUG: Loaded historical context: {len(historical_context)} chars")
+                        except Exception as hist_err:
+                            print(f"Error loading history: {hist_err}")
+                            historical_context = ""
 
 
 
@@ -320,7 +366,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                 acting_emotion, 
                                 patient_name=patient_name, 
                                 language=client_lang,
-                                question_count=q_count + 1 # The one we are about to ask
+                                question_count=q_count + 1, # The one we are about to ask
+                                historical_context=historical_context
                             )
 
                         
@@ -353,7 +400,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                     emotion_metrics=latest_emotion_metrics,
                                     condition=agent_res.get("condition", "Unknown"),
                                     confidence=agent_res.get("confidence", 0.0),
-                                    medication=str(agent_res.get("medication", "")),
+                                    medication=json.dumps(agent_res.get("medication", {})),
                                     safety=int(agent_res.get("safety_passed", 0)),
                                     distress=latest_emotion_metrics["distress_flags"]["pain"] or latest_emotion_metrics["distress_flags"]["stress"]
                                 )

@@ -188,7 +188,7 @@ const SecurityAlertOverlay = ({
               <View style={styles.warningRow}>
                 <AlertTriangle color={severityColor} size={16} />
                 <Text style={[styles.warningText, { color: severityColor }]}>
-                  Unauthorized person detected during consultation.
+                  Unauthorized person access detected during consultation.
                 </Text>
               </View>
 

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated } from 'react-native';
-import { User, LogOut, Globe, Play, ChevronRight, History, Bot } from 'lucide-react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Alert } from 'react-native';
+import { User, LogOut, Globe, Play, ChevronRight, History, Bot, Mic } from 'lucide-react-native';
 import { Colors, Typography, Spacing, Radii, Shadows } from '../../theme';
 import GlassCard from '../../components/GlassCard';
 import PrimaryButton from '../../components/PrimaryButton';
 import { getUser, clearUser } from '../../utils/storage';
-import { getHistory } from '../../api/report';
+import { getHistory, startConsultation, getTranscriberHistory } from '../../api/report';
 import SecurityStatusPanel from '../../components/SecurityStatusPanel';
 import { ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,8 +26,20 @@ const DashboardScreen = ({ navigation }) => {
     setUser(userData);
     if (userData?.id) {
       try {
-        const res = await getHistory(userData.id);
-        setHistory(res.data || []);
+        const [sessionRes, transcriberRes] = await Promise.all([
+          getHistory(userData.id),
+          getTranscriberHistory(userData.id)
+        ]);
+        
+        // Tag and merge
+        const sessionHistory = (sessionRes.data || []).map(item => ({ ...item, type: 'session' }));
+        const transcriberHistory = (transcriberRes.data || []).map(item => ({ ...item, type: 'transcriber' }));
+        
+        const combined = [...sessionHistory, ...transcriberHistory].sort((a, b) => 
+          new Date(b.created_at) - new Date(a.created_at)
+        );
+        
+        setHistory(combined);
       } catch (err) {
         console.log("Error fetching history:", err);
         setError(true);
@@ -61,6 +73,20 @@ const DashboardScreen = ({ navigation }) => {
   const handleStart = () => {
     const sessionId = `sess_${Date.now()}`;
     navigation.navigate('Consultation', { sessionId, language, patient: user });
+  };
+
+  const handleTranscriber = async () => {
+    try {
+      setLoading(true);
+      const res = await startConsultation(user.id);
+      if (res.data?.consultation_id) {
+        navigation.navigate('Transcriber', { consultationId: res.data.consultation_id, patientId: user.id });
+      }
+    } catch (err) {
+      Alert.alert("Error", "Could not initialize transcriber session.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -121,6 +147,19 @@ const DashboardScreen = ({ navigation }) => {
           />
         </GlassCard>
 
+        {/* Smart Transcriber Card */}
+        <GlassCard style={styles.transcriberCard}>
+          <View style={styles.transcriberHeader}>
+            <Mic color={Colors.indigo} size={24} />
+            <Text style={styles.transcriberTitle}>Smart AI Transcriber</Text>
+          </View>
+          <Text style={styles.transcriberInfo}>Record and transcribe doctor-patient conversations in real-time with automatic speaker detection.</Text>
+          <TouchableOpacity onPress={handleTranscriber} style={styles.transcriberBtn}>
+             <Text style={styles.transcriberBtnText}>Start Transcription</Text>
+             <ChevronRight color="#fff" size={18} />
+          </TouchableOpacity>
+        </GlassCard>
+
         {/* Security Monitoring Panel */}
         {user?.id && (
           <SecurityStatusPanel
@@ -147,31 +186,50 @@ const DashboardScreen = ({ navigation }) => {
           ) : history.length > 0 ? (
             history.map((item, index) => (
               <TouchableOpacity
-                key={item.session_id}
+                key={item.id || item.session_id}
                 onPress={() => {
-                  // Map history item to results screen format
-                  let medication = item.medication;
-                  if (typeof medication === 'string') {
-                    try {
-                      medication = JSON.parse(medication.replace(/'/g, '"'));
-                    } catch (e) { medication = {}; }
-                  }
+                  if (item.type === 'transcriber') {
+                    navigation.navigate('ConsultationDetail', { consultation: item });
+                  } else {
+                    // Map history item to results screen format
+                    const safeParse = (str) => {
+                      if (!str) return {};
+                      if (typeof str === 'object') return str;
+                      try { return JSON.parse(str); }
+                      catch (e) {
+                        try { return JSON.parse(str.replace(/'/g, '"')); }
+                        catch (e2) { return {}; }
+                      }
+                    };
 
-                  navigation.navigate('Results', {
-                    sessionId: item.session_id,
-                    diagnosis: {
-                      condition: item.condition,
-                      confidence: item.confidence * 100, // convert 0.8 to 80
-                      medication: medication,
-                      safety_passed: item.safety,
-                    }
-                  });
+                    let medication = safeParse(item.medication);
+
+                    let visionData = safeParse(item.emotion_metrics);
+
+                    navigation.navigate('Results', {
+                      sessionId: item.session_id,
+                      vision: visionData,
+                      diagnosis: {
+                        condition: item.condition,
+                        confidence: (item.confidence || 0) * 100,
+                        medication: medication,
+                        safety_passed: item.safety,
+                      }
+                    });
+                  }
                 }}
               >
                 <GlassCard style={styles.historyItem}>
                   <View style={styles.historyLeft}>
-                    <Text style={styles.historyCondition}>{item.condition}</Text>
-                    <Text style={styles.historyDate}>{new Date(item.created_at).toLocaleDateString()}</Text>
+                    <View style={styles.typeRow}>
+                      <Text style={[styles.typeBadge, item.type === 'transcriber' ? styles.typeTranscriber : styles.typeChat]}>
+                         {item.type === 'transcriber' ? 'Transcribed' : 'AI Chat'}
+                      </Text>
+                      <Text style={styles.historyDate}>{new Date(item.created_at).toLocaleDateString()}</Text>
+                    </View>
+                    <Text style={styles.historyCondition}>
+                        {item.type === 'transcriber' ? (item.summary ? item.summary.substring(0, 30) + "..." : "Consultation") : item.condition}
+                    </Text>
                   </View>
                   <ChevronRight color={Colors.textMuted} size={18} />
                 </GlassCard>
@@ -231,7 +289,11 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 12
   },
-  historyLeft: { gap: 4 },
+  historyLeft: { gap: 4, flex: 1 },
+  typeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  typeBadge: { fontSize: 9, fontWeight: 'bold', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, textTransform: 'uppercase' },
+  typeChat: { backgroundColor: 'rgba(56,239,125,0.1)', color: '#38ef7d' },
+  typeTranscriber: { backgroundColor: 'rgba(99,102,241,0.1)', color: Colors.indigo },
   historyCondition: { color: '#fff', fontSize: 16, fontWeight: '600' },
   historyDate: { color: Colors.textMuted, fontSize: 12 },
   historySection: { marginBottom: 16 },
@@ -253,6 +315,12 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 10,
   },
+  transcriberCard: { padding: 20, marginBottom: 25, backgroundColor: 'rgba(99,102,241,0.05)', borderColor: 'rgba(99,102,241,0.2)', borderWidth: 1 },
+  transcriberHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  transcriberTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  transcriberInfo: { color: Colors.textSecondary, fontSize: 13, marginBottom: 15, lineHeight: 18 },
+  transcriberBtn: { backgroundColor: Colors.indigo, padding: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  transcriberBtnText: { color: '#fff', fontWeight: 'bold' },
 });
 
 export default DashboardScreen;

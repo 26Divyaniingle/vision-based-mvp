@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import base64
 
-def get_face_embedding(image_base64: str) -> list:
+def get_face_embedding(image_base64: str, enforce_detection: bool = True) -> list:
     try:
         # Ensure proper base64 padding
         if "," in image_base64:
@@ -20,25 +20,33 @@ def get_face_embedding(image_base64: str) -> list:
     
     # Generate embedding using DeepFace (Facenet)
     try:
-        # Using opencv for maximum speed in an MVP, with detection enforced to False to prevent crashes.
-        objs = DeepFace.represent(img_path=img, model_name="Facenet", enforce_detection=False, detector_backend="opencv")
-        if len(objs) > 0:
+        # Preferred detectors: 'ssd' or 'mtcnn' are more robust than 'opencv'
+        # We avoid 'mediapipe' here because of incompatibilities with some environments
+        try:
+            objs = DeepFace.represent(img_path=img, model_name="Facenet", enforce_detection=enforce_detection, detector_backend="ssd")
+        except Exception as e:
+            # print(f"DEBUG: SSD detector failed or not available, falling back to opencv: {e}")
+            objs = DeepFace.represent(img_path=img, model_name="Facenet", enforce_detection=enforce_detection, detector_backend="opencv")
+            
+        if objs and len(objs) > 0:
             return objs[0]["embedding"]
+    except ValueError:
+        # DeepFace raises ValueError if no face is detected with enforce_detection=True
+        return []
     except Exception as e:
         print(f"Deepface error: {e}")
     return []
 
-def verify_face(current_image_b64: str, reference_embedding: list) -> bool:
+def verify_face(current_image_b64: str, reference_embedding: list, enforce_detection: bool = True) -> bool:
     """
     Verifies if the face in current_image_b64 matches the reference_embedding.
-    Returns True if match, False otherwise.
     """
     if not reference_embedding:
         return True, 0.0 # Can't verify if no reference exists
         
-    current_embedding = get_face_embedding(current_image_b64)
+    current_embedding = get_face_embedding(current_image_b64, enforce_detection=enforce_detection)
     if not current_embedding:
-        return False # No face detected in current frame
+        return None, 0.0 # No face detected in current frame
         
     # Calculate cosine similarity
     # Cosine distance = 1 - (A . B) / (||A|| * ||B||)
@@ -46,7 +54,7 @@ def verify_face(current_image_b64: str, reference_embedding: list) -> bool:
     b = np.array(reference_embedding)
     
     # Simple dot product for unit vectors (DeepFace embeddings are usually normalized)
-    distance = 1 - np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    distance = 1 - np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-6)
     # Stricter threshold for Facenet (0.3 instead of 0.4)
     # distance < 0.3 means it's the same person
     return distance < 0.3, distance

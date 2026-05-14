@@ -720,11 +720,34 @@ def display_results(results):
 # MAIN APP - LIVE SESSION
 # ═══════════════════════════════════════
 def main_app():
-    # Top Bar
+    # Sidebar Navigation
+    with st.sidebar:
+        st.markdown(f"""
+        <div style="text-align:center; padding:10px; background:rgba(102, 126, 234, 0.1); border-radius:10px; margin-bottom:20px;">
+            <h3>🏥 Medical AI</h3>
+            <p>Patient: <strong>{st.session_state.patient_name}</strong></p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        page = st.radio("🚀 Select Feature", ["AI Chatbot Assistant", "Smart Medical Transcriber"])
+        
+        st.markdown("---")
+        if st.button("Logout", type="secondary", use_container_width=True):
+            st.session_state.token = None
+            st.session_state.patient_id = None
+            st.rerun()
+
+    if page == "AI Chatbot Assistant":
+        ai_chatbot_page()
+    else:
+        smart_transcriber_page()
+
+def ai_chatbot_page():
+    # Previous main_app logic (Chatbot)
+    # Top Bar (minimal)
     st.markdown(f"""
-    <div style="display:flex; justify-content:space-between; align-items:center; background:#16213e; padding:15px; border-radius:10px; color:white; margin-bottom:15px;">
-        <span>👤 <strong>Patient:</strong> {st.session_state.patient_name}</span>
-        <a href="/" target="_self" style="text-decoration:none;"><button style="background:transparent; border:1px solid #f5576c; color:#f5576c; border-radius:5px; padding:5px 10px; cursor:pointer;">Logout</button></a>
+    <div style="display:flex; justify-content:space-between; align-items:center; background:#16213e; padding:10px; border-radius:10px; color:white; margin-bottom:15px;">
+        <span>🎙️ <strong>Feature:</strong> AI Chatbot Assistant</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -769,6 +792,173 @@ def main_app():
             st.session_state.language
         )
 
+
+# ═══════════════════════════════════════
+# SMART TRANSCRIBER PAGE
+# ═══════════════════════════════════════
+def smart_transcriber_page():
+    st.markdown("""
+    <div class="main-header">
+        <h1>🎙️ Smart AI Medical Transcriber</h1>
+        <p>Real-time doctor-patient consultation transcription and analysis.</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if "transcriber_active" not in st.session_state:
+        st.session_state.transcriber_active = False
+    if "consultation_id" not in st.session_state:
+        st.session_state.consultation_id = None
+    if "transcriber_results" not in st.session_state:
+        st.session_state.transcriber_results = None
+
+    tab1, tab2, tab3 = st.tabs(["🔴 Consultation", "📜 Patient History", "🧠 AI Summary"])
+
+    with tab1:
+        if not st.session_state.transcriber_active:
+            st.info("Click 'Start Session' to begin recording the consultation. The AI will automatically separate speakers and transcribe the session.")
+            col_start = st.columns([1, 2, 1])
+            with col_start[1]:
+                if st.button("🚀 Start Smart Transcription Session", type="primary", use_container_width=True):
+                    # Call API to start
+                    r = requests.post(f"{API_URL}/transcriber/start", params={"patient_id": st.session_state.patient_id})
+                    if r.status_code == 200:
+                        st.session_state.consultation_id = r.json()["consultation_id"]
+                        st.session_state.transcriber_active = True
+                        st.session_state.transcriber_results = None
+                        st.rerun()
+                    else:
+                        st.error("Failed to start session.")
+        else:
+            st.markdown("### 🔴 Active Consultation Recording")
+            render_transcriber_websocket(st.session_state.consultation_id)
+            
+            if st.button("🛑 Stop & Generate AI Summary", type="secondary", use_container_width=True):
+                with st.spinner("Finalizing transcript and generating medical summary..."):
+                    r = requests.post(f"{API_URL}/transcriber/{st.session_state.consultation_id}/stop")
+                    if r.status_code == 200:
+                        st.session_state.transcriber_active = False
+                        st.session_state.transcriber_results = r.json()["summary"]
+                        st.success("Consultation finalized successfully!")
+                    else:
+                        st.error("Failed to stop session.")
+
+    with tab2:
+        st.subheader("Previous Consultation Records")
+        with st.spinner("Fetching patient history..."):
+            r = requests.get(f"{API_URL}/transcriber/history/{st.session_state.patient_id}")
+            if r.status_code == 200:
+                history = r.json()
+                if not history:
+                    st.write("No previous consultations found.")
+                for item in reversed(history):
+                    date_str = item.get("created_at", "Unknown")
+                    with st.expander(f"Consultation on {date_str[:16].replace('T', ' ')}"):
+                        st.markdown(f"**Summary:** {item.get('summary', 'No summary')}")
+                        st.markdown(f"**Symptoms:** {', '.join(item.get('symptoms', []))}")
+                        st.markdown(f"**Keywords:** {', '.join(item.get('medical_keywords', []))}")
+                        
+                        st.markdown("**Full Transcript:**")
+                        for line in item.get("transcript", []):
+                            speaker = line.get("speaker", "Unknown")
+                            text = line.get("text", "")
+                            st.write(f"**{speaker}:** {text}")
+            else:
+                st.error("Failed to fetch history.")
+
+    with tab3:
+        if st.session_state.transcriber_results:
+            res = st.session_state.transcriber_results
+            st.markdown(f"""
+            <div class="results-card">
+                <h3>📋 Consultation Summary</h3>
+                <p>{res.get('summary', '')}</p>
+                <hr/>
+                <p><strong>Detected Symptoms:</strong> {', '.join(res.get('symptoms', []))}</p>
+                <p><strong>Medical Keywords:</strong> {', '.join(res.get('medical_keywords', []))}</p>
+                <p><strong>Duration Estimate:</strong> {res.get('duration', 'N/A')}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.info("Complete a consultation to see the AI summary here.")
+
+def render_transcriber_websocket(consultation_id: int):
+    """
+    WebSocket client for the Transcriber feature.
+    """
+    # Replace WS_URL/stream with WS_URL/transcriber/ws
+    TS_WS_URL = WS_URL.replace("/stream", "/transcriber/ws")
+    
+    html_code = f"""
+    <div id="transcriber-container" style="background:#1a1a2e; padding:20px; border-radius:15px; color:white;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+            <div id="ts-status" style="font-weight:bold; color:#764ba2;">🟡 Connecting...</div>
+            <div id="recording-indicator" style="display:none; color:#f5576c; animation: blink 1s infinite;">● RECORDING</div>
+        </div>
+        
+        <div id="transcript-display" style="height:400px; overflow-y:auto; background:#16213e; padding:15px; border-radius:10px; border:1px solid #302b63;">
+            <div style="color:#aaa; text-align:center; font-style:italic;">Listening for doctor and patient...</div>
+        </div>
+        
+        <style>
+            @keyframes blink {{ 0% {{ opacity: 1; }} 50% {{ opacity: 0.3; }} 100% {{ opacity: 1; }} }}
+            .speaker-doctor {{ color: #667eea; font-weight: bold; }}
+            .speaker-patient {{ color: #38ef7d; font-weight: bold; }}
+            .transcript-line {{ margin-bottom: 10px; padding: 5px; border-bottom: 1px solid rgba(255,255,255,0.05); }}
+        </style>
+    </div>
+    
+    <script>
+        const display = document.getElementById('transcript-display');
+        const status = document.getElementById('ts-status');
+        const recording = document.getElementById('recording-indicator');
+        
+        let ws = new WebSocket('{TS_WS_URL}/{consultation_id}');
+        
+        ws.onopen = () => {{
+            status.innerText = '🟢 Live Transcription Active';
+            status.style.color = '#38ef7d';
+            recording.style.display = 'block';
+            
+            // Set up audio capture
+            navigator.mediaDevices.getUserMedia({{ audio: true }})
+                .then(stream => {{
+                    const mediaRecorder = new MediaRecorder(stream);
+                    mediaRecorder.ondataavailable = async (event) => {{
+                        if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {{
+                            const reader = new FileReader();
+                            reader.onload = () => {{
+                                const b64 = reader.result.split(',')[1];
+                                ws.send(JSON.stringify({{ type: 'audio_chunk', audio_b64: b64 }}));
+                            }};
+                            reader.readAsDataURL(event.data);
+                        }}
+                    }};
+                    
+                    // Send chunks every 4 seconds for "near real-time" feel
+                    mediaRecorder.start(4000);
+                }});
+        }};
+        
+        ws.onmessage = (event) => {{
+            const data = JSON.parse(event.data);
+            if (data.type === 'transcript_update') {{
+                const div = document.createElement('div');
+                div.className = 'transcript-line';
+                const sClass = data.speaker === 'Doctor' ? 'speaker-doctor' : 'speaker-patient';
+                div.innerHTML = `<span class="${{sClass}}">${{data.speaker}}:</span> ${{data.text}}`;
+                display.appendChild(div);
+                display.scrollTop = display.scrollHeight;
+            }}
+        }};
+        
+        ws.onclose = () => {{
+            status.innerText = '🔴 Connection Closed';
+            status.style.color = '#f5576c';
+            recording.style.display = 'none';
+        }};
+    </script>
+    """
+    components.html(html_code, height=500)
 
 # ═══════════════════════════════════════
 # ENTRY

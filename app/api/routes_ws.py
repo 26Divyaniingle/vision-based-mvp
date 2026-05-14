@@ -19,7 +19,7 @@ from app.services.webcam_analysis import analyze_webcam_frame
 from app.services.symptom_extractor import extract_symptoms_ner
 from app.services.dialogue_manager import generate_next_question
 from app.services.medical_agent import predict_condition
-from app.database.crud import create_session, get_patient_embedding
+from app.database.crud import create_session, get_patient_embedding, check_session_limit, increment_session_count
 from app.vision.face_recognition import verify_face
 from app.database.security_crud import create_security_alert, count_unresolved_alerts
 from app.modules.smart_transcriber.services.history_service import HistoryService
@@ -260,6 +260,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     except (ValueError, TypeError):
                         print(f"DEBUG: Invalid patient_id format: {patient_id}")
 
+<<<<<<< HEAD
                     # NEW: Fetch historical context for smarter dialogue
                     if p_id != -1:
                         try:
@@ -268,6 +269,23 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         except Exception as hist_err:
                             print(f"Error loading history: {hist_err}")
                             historical_context = ""
+=======
+                    # --- SESSION LIMIT CHECK ---
+                    if patient_id != -1:
+                        limit_status = check_session_limit(db, int(patient_id))
+                        if not limit_status["allowed"]:
+                            await websocket.send_text(json.dumps({
+                                "type": "access_locked",
+                                "message": limit_status["message"],
+                                "admin_email": "medsense.ai@gmail.com"
+                            }))
+                            await websocket.close()
+                            break
+                        
+                        # Increment count as session has "started successfully"
+                        increment_session_count(db, int(patient_id))
+                    # ---------------------------
+>>>>>>> 710cd0819c3d8f94467bf932ae43318026e6516d
 
 
 

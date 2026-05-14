@@ -71,6 +71,12 @@ const DashboardScreen = ({ navigation }) => {
   ];
 
   const handleStart = () => {
+    if (user.isLocked || user.sessionCount >= 2) {
+      // Access Locked - handle in ConsultationScreen or show message here
+      // For now, we allow navigation but ConsultationScreen will show the lock modal
+      navigation.navigate('Consultation', { sessionId: `sess_${Date.now()}`, language, patient: user, isLocked: true });
+      return;
+    }
     const sessionId = `sess_${Date.now()}`;
     navigation.navigate('Consultation', { sessionId, language, patient: user });
   };
@@ -116,6 +122,16 @@ const DashboardScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <GlassCard style={styles.startCard}>
           <Text style={styles.shimmerTitle}>Virtual Clinic</Text>
+          
+          {/* Session Limit Display */}
+          <View style={styles.sessionLimitBadge}>
+            <Text style={[styles.sessionLimitText, (user.isLocked || user.sessionCount >= 2) && styles.expiredText]}>
+              {user.isLocked || user.sessionCount >= 2 
+                ? "Trial Expired" 
+                : `Free Sessions Remaining: ${2 - (user.sessionCount || 0)}/2`}
+            </Text>
+          </View>
+
           <Text style={styles.startInfo}>Connect with our Medical AI for a real-time health assessment.</Text>
 
           <View style={styles.langContainer}>
@@ -315,12 +331,34 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 10,
   },
+<<<<<<< HEAD
   transcriberCard: { padding: 20, marginBottom: 25, backgroundColor: 'rgba(99,102,241,0.05)', borderColor: 'rgba(99,102,241,0.2)', borderWidth: 1 },
   transcriberHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   transcriberTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
   transcriberInfo: { color: Colors.textSecondary, fontSize: 13, marginBottom: 15, lineHeight: 18 },
   transcriberBtn: { backgroundColor: Colors.indigo, padding: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   transcriberBtnText: { color: '#fff', fontWeight: 'bold' },
+=======
+  sessionLimitBadge: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  sessionLimitText: {
+    color: Colors.indigo,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  expiredText: {
+    color: Colors.rose,
+  },
+>>>>>>> 710cd0819c3d8f94467bf932ae43318026e6516d
 });
 
 export default DashboardScreen;

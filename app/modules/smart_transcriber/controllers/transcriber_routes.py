@@ -13,11 +13,11 @@ transcription_service = TranscriptionService()
 summary_service = SummaryService()
 
 @router.post("/start")
-async def start_consultation(patient_id: int, db: Session = Depends(get_db)):
+async def start_consultation(patient_id: int, language: str = "Hinglish", db: Session = Depends(get_db)):
     """
     Initialize a new smart consultation session.
     """
-    new_consultation = SmartConsultation(patient_id=patient_id)
+    new_consultation = SmartConsultation(patient_id=patient_id, language=language)
     db.add(new_consultation)
     db.commit()
     db.refresh(new_consultation)
@@ -84,14 +84,14 @@ async def transcriber_websocket(websocket: WebSocket, consultation_id: int, db: 
                     
                 audio_bytes = base64.b64decode(audio_b64)
                 
-                # 1. Transcribe
-                text = await transcription_service.transcribe_audio(audio_bytes)
+                # Optimized single-pass processing: STT + Hinglish Standardizer + Speaker ID
+                result = await transcription_service.process_transcription_segment(
+                    audio_bytes, list(consultation.transcript), language="Hinglish"
+                )
                 
-                if text and text.strip():
-                    # 2. Identify Speaker
-                    speaker = await transcription_service.identify_speaker_contextually(
-                        text, consultation.transcript
-                    )
+                if result:
+                    speaker = result["speaker"]
+                    text = result["text"]
                     
                     entry = {
                         "speaker": speaker,

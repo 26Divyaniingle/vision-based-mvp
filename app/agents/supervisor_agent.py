@@ -67,7 +67,7 @@ class SupervisorAgent:
         
         # ===== STEP 3: Condition Prediction =====
         # Use the patient info, visual data, similar cases, and medical knowledge to predict the condition
-        condition, conf = await self.condition_agent.predict_condition(
+        condition, conf, is_serious = await self.condition_agent.predict_condition(
             form_data, vision_features, similar_cases, rag_context, patient_history
         )
         
@@ -80,8 +80,9 @@ class SupervisorAgent:
         med_names = ", ".join([m.get("name", "") for m in med_res.get("allopathic", [])])
         safe = await asyncio.to_thread(self.safety_agent.check_safety, med_names)
         
-        # If safety check fails, override results with a warning
+        # If safety check fails, override results with a warning and mark as serious
         if not safe:
+            is_serious = True
             med_res["allopathic"] = [{"name": "Safety Check Failed", "dosage": "N/A", "instruction": "Consult a doctor immediately", "purpose": "Safety Override"}]
             med_res["ayurvedic"] = [{"remedy": "N/A", "benefit": "Seek professional help", "usage": "N/A", "timing": "N/A"}]
             med_res["prevention"] = ["Immediate medical attention advised."]
@@ -94,6 +95,7 @@ class SupervisorAgent:
         return {
             "condition": condition,  # Predicted medical condition
             "confidence": conf,  # How confident the AI is (0-1)
+            "is_serious": is_serious, # Whether the case is serious/urgent
             "medication": {
                 "allopathic": med_res.get("allopathic", []),  # Western medicines
                 "ayurvedic": med_res.get("ayurvedic", []),  # Traditional remedies
@@ -104,6 +106,7 @@ class SupervisorAgent:
             "similar_cases": similar_cases,  # Historical context used
             "patient_history_used": bool(patient_history) # Flag if personal history was used
         }
+
 
 # Maintain backward compatibility for functional calls
 async def run_agentic_workflow(form_data: dict, vision_features: dict, patient_history: list = None) -> dict:

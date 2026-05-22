@@ -205,7 +205,9 @@ async def complete_interview(req: CompleteInterviewRequest, db: DBSession = Depe
                 "prevention": ai_result.get("prevention", [])
             }),
             safety=int(ai_result["safety_passed"]),
-            distress=vision_summary.get("avg_eye_strain", 0) > 0.7 # Example distress logic
+            distress=vision_summary.get("avg_eye_strain", 0) > 0.7, # Example distress logic
+            is_serious=ai_result.get("is_serious", False)
+
         )
         session_db_id = db_session.id
     except Exception as e:

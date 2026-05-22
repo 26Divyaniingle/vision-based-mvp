@@ -76,8 +76,10 @@ def generate_pdf(session_id: str, db: Session = Depends(get_db)):
             "symptoms": db_session.symptoms or [],
             "transcript": db_session.transcript or [],
             "emotion_metrics": emo_parsed,
-            "safety_passed": bool(db_session.safety_check_passed)
+            "safety_passed": bool(db_session.safety_check_passed),
+            "is_serious": bool(db_session.is_serious)
         }
+
         
         pdf_bytes = generate_session_pdf_bytes(session_data, patient_name=patient_name)
         
@@ -158,8 +160,10 @@ def email_pdf(session_id: str, email: str, background_tasks: BackgroundTasks, db
             "symptoms": db_session.symptoms or [],
             "transcript": db_session.transcript or [],
             "emotion_metrics": emo_parsed,
-            "safety_passed": bool(db_session.safety_check_passed)
+            "safety_passed": bool(db_session.safety_check_passed),
+            "is_serious": bool(db_session.is_serious)
         }
+
         pdf_bytes = generate_session_pdf_bytes(session_data, patient_name=patient_name)
         
         # Use BackgroundTasks to avoid client timeout

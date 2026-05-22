@@ -77,30 +77,30 @@ const TranscriberScreen = ({ route, navigation }) => {
     
     try {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        setStatus('🟢 Recording Chunk...');
+        setStatus('🟢 Recording...');
         
         // Ensure recorder is ready
-        if (audioRecorder.prepareToRecordAsync) {
+        if (audioRecorder.prepareToRecordAsync && !audioRecorder.isPrepared) {
           await audioRecorder.prepareToRecordAsync();
         }
         
         if (!isRecordingRef.current) return;
         audioRecorder.record();
         
-        // Record for 6 seconds
-        await new Promise(resolve => setTimeout(resolve, 6000));
+        // Record for 4 seconds (Faster updates than 10s)
+        await new Promise(resolve => setTimeout(resolve, 4000));
         
-        // CRITICAL: Check if we are still recording after the wait
         if (!isRecordingRef.current) return;
 
         if (audioRecorder.isRecording) {
           try {
             await audioRecorder.stop();
-            const file = new File(audioRecorder.uri);
-            const b64 = await file.base64();
-            if (ws.current && ws.current.readyState === WebSocket.OPEN && isRecordingRef.current) {
-              ws.current.send(JSON.stringify({ type: 'audio_chunk', audio_b64: b64 }));
-              setStatus('🟢 Live Transcription Active');
+            
+            // Immediately start next process to minimize gaps
+            const uri = audioRecorder.uri;
+            if (uri) {
+                // Background the base64 conversion and sending so we can restart faster
+                processAndSendAudio(uri);
             }
           } catch (stopErr) {
             console.log('Stop recording error:', stopErr);
@@ -109,11 +109,24 @@ const TranscriberScreen = ({ route, navigation }) => {
       }
     } catch (err) {
       console.log('Recording cycle error:', err);
-      setStatus('🟡 Retrying recording...');
+      setStatus('🟡 Retrying...');
     }
 
     if (isRecordingRef.current) {
-        timeoutRef.current = setTimeout(startRecordingCycle, 500); 
+        // Reduced gap to 100ms
+        timeoutRef.current = setTimeout(startRecordingCycle, 100); 
+    }
+  };
+
+  const processAndSendAudio = async (uri) => {
+    try {
+        const file = new File(uri);
+        const b64 = await file.base64();
+        if (ws.current && ws.current.readyState === WebSocket.OPEN && isRecordingRef.current) {
+            ws.current.send(JSON.stringify({ type: 'audio_chunk', audio_b64: b64 }));
+        }
+    } catch (err) {
+        console.log("Error processing audio chunk:", err);
     }
   };
 

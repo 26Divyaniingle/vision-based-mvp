@@ -14,7 +14,8 @@ class SmartConsultation(Base):
     patient_id = Column(Integer, index=True) # Link to patients.id
     session_id = Column(String, unique=True, index=True, nullable=True) # Optional link to existing Session
     
-    # Transcription data
+    # Transcription settings
+    language = Column(String, default="English")
     transcript = Column(JSON, default=list) # List of dicts: {"speaker": "Doctor/Patient", "text": "...", "timestamp": "..."}
     
     # AI Generated Analysis
@@ -32,6 +33,7 @@ class SmartConsultation(Base):
             "id": self.id,
             "patient_id": self.patient_id,
             "session_id": self.session_id,
+            "language": self.language,
             "transcript": self.transcript,
             "summary": self.summary,
             "symptoms": self.symptoms,

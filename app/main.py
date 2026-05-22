@@ -3,7 +3,8 @@ Main Application Entry Point
 This file sets up the FastAPI application, loads all API routes, and initializes the server.
 It also handles model pre-loading during startup to prevent timeouts on first requests.
 """
-
+# Force reload to refresh DB metadata
+import os
 from fastapi import FastAPI
 from app.api import routes_auth, routes_session, routes_report, routes_interview, routes_ws, routes_ai_assistant, routes_security
 from app.modules.smart_transcriber.controllers import transcriber_routes

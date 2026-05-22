@@ -62,13 +62,15 @@ async def process_session(req: SessionRequest, db: Session = Depends(get_db)):
     )
     
     # 2. Increment Session Count (only after successful initialization/start)
-    increment_session_count(db, req.patient_id)
+    patient = increment_session_count(db, req.patient_id)
+    remaining = 15 - patient.sessionCount if patient else 0
     
     return {
         "session_id": session_id,
         "symptoms": req.symptoms,
         "vision": features,
-        "ai_results": result
+        "ai_results": result,
+        "remaining_sessions": remaining
     }
 
 @router.get("/list")
@@ -96,6 +98,7 @@ def list_sessions(patient_id: int = Query(...), db: Session = Depends(get_db)):
         "symptoms": s.symptoms,
         "emotion_metrics": s.emotion_metrics,
         "safety_passed": bool(s.safety_check_passed),
+        "is_serious": bool(s.is_serious),
         "created_at": s.created_at,
         "medication": safe_parse_medication(s.medication)
     } for s in sessions]
@@ -127,5 +130,7 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
         "symptoms": s.symptoms,
         "vision": s.emotion_metrics,
         "safety_passed": bool(s.safety_check_passed),
+        "is_serious": bool(s.is_serious),
         "created_at": s.created_at
     }
+

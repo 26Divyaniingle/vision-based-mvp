@@ -23,7 +23,17 @@ def analyze_emotion(image_base64: str) -> str:
     """
     # Decode the base64 image to a numpy array
     if "," in image_base64:
-        image_base64 = image_base64.split(",")[1]
+        try:
+            image_base64 = image_base64.split(",")[1]
+        except IndexError:
+            pass
+            
+    # Add padding if needed
+    image_base64 = image_base64.strip()
+    padding = len(image_base64) % 4
+    if padding > 0:
+        image_base64 += "=" * (4 - padding)
+        
     nparr = np.frombuffer(base64.b64decode(image_base64), np.uint8)
     
     # Decode the image array using OpenCV (reads as BGR format)

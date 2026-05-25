@@ -30,7 +30,7 @@ def create_patient(db: Session, name: str, token: str, embedding_str: str, age: 
 def get_all_patients(db: Session) -> List[Patient]:
     return db.query(Patient).all()
 
-def create_session(db: Session, session_id: str, patient_id: int, transcript: list, symptoms: list, emotion_metrics: dict, condition: str, confidence: float, medication: str, safety: int, distress: bool):
+def create_session(db: Session, session_id: str, patient_id: int, transcript: list, symptoms: list, emotion_metrics: dict, condition: str, confidence: float, medication: str, safety: int, distress: bool, is_serious: bool = False):
     new_sess = SessionModel(
         session_id=session_id,
         patient_id=patient_id, 
@@ -41,12 +41,14 @@ def create_session(db: Session, session_id: str, patient_id: int, transcript: li
         confidence=confidence, 
         medication=medication, 
         safety_check_passed=safety,
-        distress_detected=distress
+        distress_detected=distress,
+        is_serious=is_serious
     )
     db.add(new_sess)
     db.commit()
     db.refresh(new_sess)
     return new_sess
+
 
 def get_patient_by_email(db: Session, email: str):
     return db.query(Patient).filter(Patient.email == email).first()
@@ -117,7 +119,7 @@ def increment_session_count(db: Session, patient_id: int):
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if patient:
         patient.sessionCount += 1
-        if patient.sessionCount >= 2:
+        if patient.sessionCount >= 15:
             patient.isLocked = True
         db.commit()
         db.refresh(patient)
@@ -150,10 +152,10 @@ def check_session_limit(db: Session, patient_id: int) -> dict:
     if patient.isLocked:
         return {"allowed": False, "message": "Free consultation limit reached. Please contact administrator."}
     
-    if patient.sessionCount >= 2:
+    if patient.sessionCount >= 15:
         # Safety check: ensure isLocked is sync'd
         patient.isLocked = True
         db.commit()
         return {"allowed": False, "message": "Free consultation limit reached. Please contact administrator."}
     
-    return {"allowed": True, "remaining": 2 - patient.sessionCount}
+    return {"allowed": True, "remaining": 15 - patient.sessionCount}

@@ -2,9 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Alert, Dimensions, ActivityIndicator, TextInput, Keyboard,
-  KeyboardAvoidingView, Platform, StatusBar,
+  KeyboardAvoidingView, Platform, StatusBar, Animated,
 } from 'react-native';
-import { CameraView } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, requestRecordingPermissionsAsync, RecordingPresets } from 'expo-audio';
 import { File, Paths } from 'expo-file-system';
 import { Mic, MicOff, LogOut, Send, Shield, Eye, Activity, Zap, Brain, HeartPulse } from 'lucide-react-native';
@@ -138,6 +138,7 @@ const cbStyles = StyleSheet.create({
 // ══════════════════════════════════════════════════════════════════════════════
 const ConsultationScreen = ({ route, navigation }) => {
   const { sessionId, language, patient } = route.params;
+  const [permission, requestPermission] = useCameraPermissions();
 
   const [messages, setMessages]             = useState([]);
   const [symptoms, setSymptoms]             = useState([]);
@@ -175,6 +176,17 @@ const ConsultationScreen = ({ route, navigation }) => {
   const frameInterval     = useRef(null);
   const isMutedRef        = useRef(isMuted);
   const playTTSRef        = useRef(null);
+  const blinkAnim         = useRef(new Animated.Value(0.3)).current;
+
+  // Blinking animation for the "SECURE" dot
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(blinkAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(blinkAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
 
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const player        = useAudioPlayer(null);
@@ -192,6 +204,18 @@ const ConsultationScreen = ({ route, navigation }) => {
   }, [playerStatus.playing]);
 
   useEffect(() => {
+    (async () => {
+      if (requestPermission) {
+        const { status } = await requestPermission();
+        if (status !== 'granted') {
+          console.warn('Camera permission not granted');
+          setMessages(prev => [...prev, { 
+            role: 'status', 
+            text: '⚠️ Camera permission required for identity security monitoring.' 
+          }]);
+        }
+      }
+    })();
     connectWebSocket();
     startVideoSampling();
     setupAudio();
@@ -294,7 +318,10 @@ const ConsultationScreen = ({ route, navigation }) => {
           setIsFinalizing(true);
           setCurrentPhase('finalizing');
           setTimeout(() => navigation.replace('Results', {
-            diagnosis: data.diagnosis, sessionId, vision: data.vision,
+            diagnosis: data.diagnosis, 
+            sessionId, 
+            vision: data.vision,
+            remainingSessions: data.remaining_sessions
           }), 2000);
           break;
       }
@@ -331,7 +358,7 @@ const ConsultationScreen = ({ route, navigation }) => {
           }
         }
       }
-    }, 3000);
+    }, 1000);
   };
 
   // ── Audio ────────────────────────────────────────────────────────────────────
@@ -440,11 +467,10 @@ const ConsultationScreen = ({ route, navigation }) => {
               style={styles.cameraMonitor}
               facing="front"
               zoom={0}
-              mute={true}
             />
             <View style={styles.cameraOverlay}>
               <View style={styles.liveBadge}>
-                <View style={[styles.liveDot, { backgroundColor: Colors.rose }]} />
+                <Animated.View style={[styles.liveDot, { backgroundColor: Colors.rose, opacity: blinkAnim }]} />
                 <Text style={[styles.liveText]}>SECURE</Text>
               </View>
               {/* Face alignment guide */}
@@ -679,7 +705,14 @@ const ConsultationScreen = ({ route, navigation }) => {
         onVerified={() => {
           setSecurityAlertVisible(false);
           setSessionRestricted(false);
+          setSecurityMismatchCount(0);
           setCameraRefreshKey(k => k + 1);
+          
+          // Notify WebSocket to reset its internal mismatch counters
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'resolve_security' }));
+          }
+
           setMessages(prev => [...prev, {
             role: 'status',
             text: '✅ Identity re-verified. Consultation access restored.',
@@ -751,6 +784,15 @@ const styles = StyleSheet.create({
   cameraMonitor: {
     width: '100%',
     height: '100%',
+  },
+  samplingCamera: { 
+    width: 1, 
+    height: 1, 
+    opacity: 0.01, 
+    position: 'absolute', 
+    bottom: 0, 
+    right: 0, 
+    overflow: 'hidden' 
   },
   sidebarFaceGuide: {
     position: 'absolute',

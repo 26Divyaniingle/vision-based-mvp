@@ -69,6 +69,8 @@ class Session(Base):
     medication = Column(String)  # Recommended medications and remedies
     safety_check_passed = Column(Integer, default=1)  # Whether medication passed safety checks
     distress_detected = Column(Boolean, default=False)  # Was patient distress detected during interview
+    is_serious = Column(Boolean, default=False)  # Whether the case requires immediate clinical care
+
     
     # Metadata
     created_at = Column(DateTime, default=datetime.datetime.utcnow)  # Session start timestamp

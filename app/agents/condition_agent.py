@@ -32,9 +32,10 @@ class ConditionAgent(BaseAgent):
             patient_history: Previous consultations for this specific patient
             
         Returns:
-            A tuple of (condition_name, confidence_score)
+            A tuple of (condition_name, confidence_score, is_serious)
             - condition_name: String describing the predicted condition
             - confidence_score: Float between 0 and 1 indicating diagnosis confidence
+            - is_serious: Boolean indicating if the case requires immediate care
         """
         
         # Format patient history for the prompt
@@ -58,9 +59,10 @@ Patient's Own Previous Consultations:
 REFERENCE MEDICAL KNOWLEDGE (RAG):
 {rag_context}
 
-Based ON the patient current symptoms, their medical history (previous consultations), and the provided reference medical knowledge, output ONLY a JSON with two keys:
+Based ON the patient current symptoms, their medical history (previous consultations), and the provided reference medical knowledge, output ONLY a JSON with three keys:
 "condition": <the predicted medical condition, concise>
 "confidence": <float between 0 and 1>
+"is_serious": <boolean, true if the case is potentially life-threatening or requires immediate clinical care, otherwise false>
 """
         
         # Send prompt to LLM and get response
@@ -69,9 +71,11 @@ Based ON the patient current symptoms, their medical history (previous consultat
         # Parse the JSON response from the LLM
         data = self.parse_json(resp)
         
-        # Extract condition and confidence, with sensible defaults if parsing fails
+        # Extract fields, with sensible defaults if parsing fails
         condition = data.get("condition", "Possible viral infection or stress")
         confidence = float(data.get("confidence", 0.6))
+        is_serious = bool(data.get("is_serious", False))
         
-        return condition, confidence
+        return condition, confidence, is_serious
+
 

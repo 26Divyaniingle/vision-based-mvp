@@ -7,8 +7,18 @@ def get_face_embedding(image_base64: str, enforce_detection: bool = True) -> lis
     try:
         # Ensure proper base64 padding
         if "," in image_base64:
-            image_base64 = image_base64.split(",")[1]
-        image_base64 += "=" * ((4 - len(image_base64) % 4) % 4)
+            try:
+                image_base64 = image_base64.split(",")[1]
+            except IndexError:
+                pass # Already clean
+        
+        # Remove any whitespace/newlines that might be present
+        image_base64 = image_base64.strip()
+        
+        # Add padding if needed
+        padding = len(image_base64) % 4
+        if padding > 0:
+            image_base64 += "=" * (4 - padding)
         # Decode base64 to image
         nparr = np.frombuffer(base64.b64decode(image_base64), np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -55,8 +65,9 @@ def verify_face(current_image_b64: str, reference_embedding: list, enforce_detec
     
     # Simple dot product for unit vectors (DeepFace embeddings are usually normalized)
     distance = 1 - np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-6)
-    # Stricter threshold for Facenet (0.3 instead of 0.4)
-    # distance < 0.3 means it's the same person
-    return distance < 0.3, distance
+    # Threshold for Facenet (0.4 is standard for cosine distance)
+    # distance < 0.4 means it's the same person
+    print(f"DEBUG Security (verify_face): Distance={distance:.4f}, Threshold=0.4")
+    return distance < 0.4, distance
 
 

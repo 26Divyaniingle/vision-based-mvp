@@ -9,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BASE_URL } from '../../api/client';
 
 const ResultsScreen = ({ route, navigation }) => {
-  const { diagnosis, sessionId, vision } = route.params;
+  const { diagnosis, sessionId, vision, remainingSessions } = route.params;
   const [activeTab, setActiveTab] = useState('allopathic');
   const [email, setEmail] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -58,7 +58,15 @@ const ResultsScreen = ({ route, navigation }) => {
       >
         <View style={styles.header}>
           <FileText color={Colors.indigo} size={24} />
-          <Text style={styles.headerTitle}>Medical Analysis</Text>
+          <View style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={styles.headerTitle}>Medical Analysis</Text>
+          </View>
+          {remainingSessions !== undefined && (
+            <View style={styles.remainingBadge}>
+              <Text style={styles.remainingLabel}>SESSIONS REMAINING</Text>
+              <Text style={styles.remainingValue}>{remainingSessions}</Text>
+            </View>
+          )}
         </View>
         
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -73,12 +81,15 @@ const ResultsScreen = ({ route, navigation }) => {
               <Text style={styles.confidenceText}>{(diagnosis.confidence > 1 ? diagnosis.confidence : diagnosis.confidence * 100).toFixed(1)}% Confidence Match</Text>
             </View>
             
-            <View style={[styles.safetyBadge, { backgroundColor: diagnosis.safety_passed ? 'rgba(16,185,129,0.1)' : 'rgba(244,63,94,0.1)' }]}>
-               {diagnosis.safety_passed ? <CheckCircle color={Colors.emerald} size={14} /> : <AlertTriangle color={Colors.rose} size={14} />}
-               <Text style={[styles.safetyText, { color: diagnosis.safety_passed ? Colors.emerald : Colors.rose }]}>
-                 {diagnosis.safety_passed ? 'CLINICAL SAFETY PASSED' : 'IMMEDIATE CARE ADVISED'}
-               </Text>
-            </View>
+            {diagnosis.is_serious && (
+              <View style={[styles.safetyBadge, { backgroundColor: 'rgba(244,63,94,0.1)', borderColor: 'rgba(244,63,94,0.2)' }]}>
+                <AlertTriangle color={Colors.rose} size={14} />
+                <Text style={[styles.safetyText, { color: Colors.rose }]}>
+                  IMMEDIATE CARE ADVISED
+                </Text>
+              </View>
+            )}
+
           </GlassCard>
 
           <GlassCard style={styles.metricsCard}>
@@ -192,8 +203,28 @@ const ResultsScreen = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 20 },
-  headerTitle: { fontSize: 22, color: Colors.textPrimary, fontWeight: 'bold' },
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    gap: 10, 
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+    marginBottom: 10
+  },
+  headerTitle: { fontSize: 20, color: Colors.textPrimary, fontWeight: 'bold' },
+  remainingBadge: {
+    backgroundColor: 'rgba(99,102,241,0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.3)',
+  },
+  remainingLabel: { color: Colors.indigo, fontSize: 7, fontWeight: '800', letterSpacing: 0.5 },
+  remainingValue: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
   diagnosisCard: { padding: 24, marginBottom: 25, alignItems: 'center' },
   label: { color: Colors.textSecondary, fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1 },

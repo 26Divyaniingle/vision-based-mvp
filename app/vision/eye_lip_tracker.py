@@ -44,7 +44,17 @@ def extract_vision_features(image_base64: str) -> dict:
     try:
         # Decode image
         if "," in image_base64:
-            image_base64 = image_base64.split(",")[1]
+            try:
+                image_base64 = image_base64.split(",")[1]
+            except IndexError:
+                pass
+                
+        # Add padding if needed
+        image_base64 = image_base64.strip()
+        padding = len(image_base64) % 4
+        if padding > 0:
+            image_base64 += "=" * (4 - padding)
+            
         nparr = np.frombuffer(base64.b64decode(image_base64), np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:

@@ -32,8 +32,8 @@ export const buildWsUrl = (sessionId) =>
 /**
  * Transcriber Endpoints
  */
-export const startConsultation = (patientId) =>
-  client.post(`/transcriber/start`, null, { params: { patient_id: patientId } });
+export const startConsultation = (patientId, language = 'English') =>
+  client.post(`/transcriber/start`, null, { params: { patient_id: patientId, language } });
 
 export const stopConsultation = (consultationId) =>
   client.post(`/transcriber/${consultationId}/stop`);

@@ -168,19 +168,16 @@ def generate_session_pdf_bytes(session_data: dict, patient_name: str = "Patient"
     kv_row("Confidence:", f"{conf_pct:.1f}%")
     pdf.ln(1)
 
-    # Safety status inline
-    pdf.set_font("helvetica", "B", 10)
-    pdf.set_text_color(*TEXT_MUTED)
-    pdf.cell(52, 7, "Clinical Safety:", ln=0)
-    if safety_val:
-        pdf.set_text_color(*GREEN)
+    # Safety status inline - Only show if serious
+    if session_data.get("is_serious", False):
         pdf.set_font("helvetica", "B", 10)
-        pdf.cell(0, 7, "PASSED - Safe for Home Care", ln=1)
-    else:
+        pdf.set_text_color(*TEXT_MUTED)
+        pdf.cell(52, 7, "Clinical Safety:", ln=0)
         pdf.set_text_color(*RED)
         pdf.set_font("helvetica", "B", 10)
         pdf.cell(0, 7, "WARNING - Consult a Doctor Immediately", ln=1)
     pdf.set_text_color(*TEXT_DARK)
+
 
     # ── SECTION 2 — BIO-VISUAL ANALYSIS ───────────────────────────
     section_header("Bio-Visual Analysis")

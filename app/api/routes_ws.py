@@ -57,6 +57,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
     identity_mismatch_count = 0  # Track consecutive / total mismatches in this session
     session_restricted = False   # True when mismatches exceed threshold (3)
     historical_context = "" # To be loaded on start
+    remaining_sessions = 15 # Default
+    last_sent_mismatch_count = 0 
 
     
     async def send_tts_audio(text, language):
@@ -78,11 +80,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
             
             # Identity Verification (Security Check)
             if reference_embedding:
-                is_verified, score = await asyncio.to_thread(verify_face, img_b64, reference_embedding)
+                # Background monitoring should be slightly more lenient to catch moving faces
+                is_verified, score = await asyncio.to_thread(verify_face, img_b64, reference_embedding, enforce_detection=False)
                 
                 # Live security monitoring log
-                if total_frames % 20 == 0:
-                    print(f"Security check (Session: {session_id}): Score {score:.3f}")
+                if total_frames % 10 == 0:
+                    print(f"DEBUG Security (Session {session_id}): is_verified={is_verified}, score={score:.3f}")
 
                 if is_verified is False:
                     identity_mismatch_count += 1
@@ -104,27 +107,28 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     except Exception as db_err:
                         print(f"Security alert DB write error: {db_err}")
 
-                    # Compute restriction (lock after 3 total mismatches)
-                    restrict = identity_mismatch_count >= 3
-                    if restrict:
-                        print(f"SESSION ENFORCEMENT: Restricting session {session_id} due to multiple identity mismatches.")
+                    # Only send alert if mismatch count has increased
+                    if identity_mismatch_count > last_sent_mismatch_count:
+                        last_sent_mismatch_count = identity_mismatch_count
+                        if websocket.client_state == WebSocketState.CONNECTED:
+                            await websocket.send_text(json.dumps({
+                                "type": "identity_alert",
+                                "message": "SECURITY ALERT: Unauthorized person access detected.",
+                                "score": round(float(score), 4),
+                                "mismatch_count": identity_mismatch_count,
+                                "restrict": identity_mismatch_count >= 3,
+                            }))
+                    
+                    if identity_mismatch_count >= 3:
                         session_restricted = True
-
-                    # Alert immediately on mismatch
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        await websocket.send_text(json.dumps({
-                            "type": "identity_alert",
-                            "message": "SECURITY ALERT: Unauthorized person access detected.",
-                            "score": round(float(score), 4),
-                            "mismatch_count": identity_mismatch_count,
-                            "restrict": restrict,
-                        }))
                 
                 elif is_verified is True:
                     # Reset mismatch relay if a successful match occurs (self-healing)
                     if identity_mismatch_count > 0:
-                        print(f"DEBUG: Identity re-verified for session {session_id}. Resetting mismatch count.")
+                        print(f"DEBUG Security (Session {session_id}): Identity re-verified. Resetting mismatch count.")
                         identity_mismatch_count = 0
+                        last_sent_mismatch_count = 0
+                        session_restricted = False
                         
                 elif is_verified is None:
                     # No face detected - notify user via status message if they are waiting for an alert
@@ -187,13 +191,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                 # ── Push live vision update to mobile sidebar ──────────────────
                 if websocket.client_state == WebSocketState.CONNECTED:
                     try:
+                        # Extract current frame values for real-time feel
+                        curr_eye = analysis["features"].get("eye_strain_score", 0)
+                        curr_lip = analysis["features"].get("lip_tension", 0)
+                        
                         await websocket.send_text(json.dumps({
                             "type": "vision_update",
-                            "emotion":      latest_emotion_metrics["dominant_emotion"],
-                            "eye_strain":   round(latest_emotion_metrics["avg_eye_strain"], 3),
-                            "lip_tension":  round(latest_emotion_metrics["avg_lip_tension"], 3),
-                            "stress":       latest_emotion_metrics["distress_flags"]["stress"],
-                            "pain":         latest_emotion_metrics["distress_flags"]["pain"],
+                            "emotion":      emo if emo else "neutral",
+                            "eye_strain":   round(float(curr_eye), 3),
+                            "lip_tension":  round(float(curr_lip), 3),
+                            "stress":       bool(flags["stress"]),
+                            "pain":         bool(flags["pain"]),
                         }))
                     except Exception as ve:
                         print(f"vision_update send error: {ve}")
@@ -273,7 +281,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                             break
                         
                         # Increment count as session has "started successfully"
-                        increment_session_count(db, p_id)
+                        updated_pat = increment_session_count(db, p_id)
+                        if updated_pat:
+                            remaining_sessions = 15 - updated_pat.sessionCount
                     # ---------------------------
 
                     # Fetch historical context for smarter dialogue
@@ -329,7 +339,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     # Received live webcam snapshot 
                     img_b64 = data.get("image_base64", "")
                     if img_b64 and not vision_task_active:
-                        # print(f"DEBUG: Received video frame for session {session_id}")
+                        if total_frames % 20 == 0:
+                            print(f"DEBUG: Received video frame for session {session_id}")
                         vision_task_active = True
                         asyncio.create_task(run_vision_analysis(img_b64, reference_embedding))
 
@@ -417,8 +428,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                     confidence=agent_res.get("confidence", 0.0),
                                     medication=json.dumps(agent_res.get("medication", {})),
                                     safety=int(agent_res.get("safety_passed", 0)),
-                                    distress=latest_emotion_metrics["distress_flags"]["pain"] or latest_emotion_metrics["distress_flags"]["stress"]
+                                    distress=latest_emotion_metrics["distress_flags"]["pain"] or latest_emotion_metrics["distress_flags"]["stress"],
+                                    is_serious=agent_res.get("is_serious", False)
                                 )
+
                             except Exception as db_err:
                                 print(f"DB Update Error during finalize: {db_err}")
                             
@@ -426,7 +439,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                 "type": "finalize",
                                 "diagnosis": agent_res,
                                 "symptoms": list(extracted_symptoms),
-                                "vision": latest_emotion_metrics
+                                "vision": latest_emotion_metrics,
+                                "remaining_sessions": remaining_sessions
                             }))
                         else:
                             conversation_history.append({"role": "bot", "text": next_q})
@@ -450,6 +464,17 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                 "audio_b64": resp_audio_b64,
                                 "symptoms_so_far": list(extracted_symptoms)
                             }))
+
+                elif msg_type == "resolve_security":
+                    # Client manually re-verified identity via HTTP flow
+                    print(f"DEBUG: Security resolution received via WebSocket for session {session_id}")
+                    identity_mismatch_count = 0
+                    last_sent_mismatch_count = 0
+                    session_restricted = False
+                    await websocket.send_text(json.dumps({
+                        "type": "status",
+                        "text": "🛡️ Security status cleared by manual verification."
+                    }))
             except Exception as e:
                 print(f"Error processing message content: {e}")
 

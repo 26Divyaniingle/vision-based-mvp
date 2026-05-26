@@ -105,18 +105,30 @@ def re_verify_identity(req: ReVerifyRequest, db: DBSession = Depends(get_db)):
         - score: Cosine distance (lower = better match)
         - message: Human-readable result
     """
+    print(f"DEBUG: Re-verify request for Patient {req.patient_id}, Session {req.session_id}")
+    
     # Step 1: Get reference embedding
     reference_embedding = get_patient_embedding(db, req.patient_id)
     if not reference_embedding:
+        print(f"ERROR: Re-verify failed - No reference embedding found for Patient {req.patient_id}")
         raise HTTPException(status_code=404, detail="No face embedding found for this patient.")
 
+    print(f"DEBUG: Loaded reference embedding (length: {len(reference_embedding)})")
+
     try:
-        # Use lenient detection for manual re-verification to help the user get back in
-        is_verified, score = verify_face(req.image_base64, reference_embedding, enforce_detection=False)
+        # Use balanced, highly reliable threshold of 0.48 for manual re-verification
+        is_verified, score = verify_face(
+            req.image_base64, 
+            reference_embedding, 
+            enforce_detection=True, 
+            threshold=0.48
+        )
+        print(f"DEBUG: Re-verify result - Verified: {is_verified}, Score: {score:.4f}")
     except Exception as e:
+        print(f"ERROR: Re-verify verification logic crashed: {e}")
         raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")
 
-    if is_verified is True:
+    if is_verified == True:
         # Step 3: Resolve pending alerts for this session
         resolve_security_alert(db, req.session_id)
         return {

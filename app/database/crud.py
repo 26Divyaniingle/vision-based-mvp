@@ -11,6 +11,10 @@ from typing import List
 from app.auth.token_reset import hash_token, verify_token  # Token hashing functions
 from datetime import datetime, timezone
 
+# --- Usage Limits Configuration ---
+MAX_FREE_SESSIONS = 15
+# ----------------------------------
+
 def get_patient_by_token(db: Session, plain_token: str):
     patients = db.query(Patient).all()
     for patient in patients:
@@ -119,7 +123,7 @@ def increment_session_count(db: Session, patient_id: int):
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if patient:
         patient.sessionCount += 1
-        if patient.sessionCount >= 15:
+        if patient.sessionCount >= MAX_FREE_SESSIONS:
             patient.isLocked = True
         db.commit()
         db.refresh(patient)
@@ -149,13 +153,20 @@ def check_session_limit(db: Session, patient_id: int) -> dict:
     if not patient:
         return {"allowed": False, "message": "Patient not found."}
     
-    if patient.isLocked:
-        return {"allowed": False, "message": "Free consultation limit reached. Please contact administrator."}
+    # If the limit has increased but the user was previously locked at a lower limit,
+    # dynamically unlock them if they haven't reached the new limit yet!
+    if patient.isLocked and patient.sessionCount < MAX_FREE_SESSIONS:
+        patient.isLocked = False
+        db.commit()
+        db.refresh(patient)
     
-    if patient.sessionCount >= 15:
+    if patient.isLocked:
+        return {"allowed": False, "message": f"Free consultation limit ({MAX_FREE_SESSIONS}) reached. Please contact administrator."}
+    
+    if patient.sessionCount >= MAX_FREE_SESSIONS:
         # Safety check: ensure isLocked is sync'd
         patient.isLocked = True
         db.commit()
-        return {"allowed": False, "message": "Free consultation limit reached. Please contact administrator."}
+        return {"allowed": False, "message": f"Free consultation limit ({MAX_FREE_SESSIONS}) reached. Please contact administrator."}
     
-    return {"allowed": True, "remaining": 15 - patient.sessionCount}
+    return {"allowed": True, "remaining": MAX_FREE_SESSIONS - patient.sessionCount}

@@ -64,6 +64,8 @@ const SecurityAlertOverlay = ({
 }) => {
   const [phase, setPhase] = useState('alert'); // 'alert' | 'camera' | 'verifying' | 'success' | 'failed'
   const [verifyResult, setVerifyResult] = useState(null);
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const cameraRef = useRef(null);
@@ -73,6 +75,7 @@ const SecurityAlertOverlay = ({
     if (visible) {
       setPhase('alert');
       setVerifyResult(null);
+      setIsCameraReady(false);
       // Shake the card to draw attention
       Animated.sequence([
         Animated.timing(shakeAnim, { toValue: 10, duration: 80, useNativeDriver: true }),
@@ -94,16 +97,26 @@ const SecurityAlertOverlay = ({
     }
   }, [visible]);
 
-  // ── Re-Verification Handler ──────────────────────────────────────────────
+  // Reset camera ready state when phase changes to anything other than camera
+  useEffect(() => {
+    if (phase !== 'camera') {
+      setIsCameraReady(false);
+    }
+  }, [phase]);
+
   const handleReVerify = async () => {
-    if (!cameraRef.current) return;
-    setPhase('verifying');
+    if (!cameraRef.current || !isCameraReady || isCapturing) {
+      console.warn('Re-verify requested but camera not ready or already capturing');
+      return;
+    }
+    setIsCapturing(true);
     try {
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
-        quality: 0.5,
-        scale: 0.6,
+        quality: 0.4,
       });
+      setPhase('verifying');
+      setIsCapturing(false);
       const res = await reVerifyIdentity(patientId, sessionId, photo.base64);
       const data = res.data;
       if (data.verified) {
@@ -117,7 +130,10 @@ const SecurityAlertOverlay = ({
         setPhase('failed');
       }
     } catch (err) {
-      setVerifyResult({ success: false, message: 'Verification request failed. Check your connection.' });
+      setIsCapturing(false);
+      console.error('Re-verification request exception:', err);
+      const errMsg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Verification request failed. Check your connection.';
+      setVerifyResult({ success: false, message: errMsg });
       setPhase('failed');
     }
   };
@@ -263,15 +279,47 @@ const SecurityAlertOverlay = ({
                 Position your face within the frame, then tap the button below.
               </Text>
               <View style={styles.cameraWrapper}>
-                <CameraView ref={cameraRef} style={styles.miniCamera} facing="front" />
+                <CameraView 
+                  ref={cameraRef} 
+                  style={styles.miniCamera} 
+                  facing="front" 
+                  onCameraReady={() => {
+                    console.log("Overlay camera READY");
+                    setIsCameraReady(true);
+                  }}
+                  onMountError={(err) => {
+                    console.error("Overlay camera mount error:", err);
+                    setIsCameraReady(false);
+                  }}
+                />
                 <View style={styles.cameraFaceGuide} />
               </View>
               <TouchableOpacity
-                style={[styles.btn, styles.btnPrimary, { marginTop: 16, alignSelf: 'center' }]}
+                style={[
+                  styles.btn,
+                  styles.btnPrimary,
+                  { marginTop: 16, alignSelf: 'center' },
+                  (!isCameraReady || isCapturing) && { opacity: 0.6 }
+                ]}
                 onPress={handleReVerify}
+                disabled={!isCameraReady || isCapturing}
               >
-                <ShieldCheck color="#fff" size={16} />
-                <Text style={styles.btnTextPrimary}>Confirm Identity</Text>
+                {isCapturing ? (
+                  <>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.btnTextPrimary}>Capturing Image...</Text>
+                  </>
+                ) : isCameraReady ? (
+                  <>
+                    <ShieldCheck color="#fff" size={16} />
+                    <Text style={styles.btnTextPrimary}>Confirm Identity</Text>
+                  </>
+                ) : (
+                  <>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.btnTextPrimary}>Starting Camera...</Text>
+                  </>
+                )}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.endLink}

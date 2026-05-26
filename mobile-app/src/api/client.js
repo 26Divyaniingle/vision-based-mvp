@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Use EXPO_PUBLIC_API_URL from .env file. If not set, fallback to previous IP for development.
-const envBaseUrl = process.env.EXPO_PUBLIC_API_URL || 'http://10.222.82.29:8000';
+const envBaseUrl = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.43.115:8000';
 export const BASE_URL = envBaseUrl;
 export const WS_BASE = envBaseUrl.replace('http', 'ws');
 

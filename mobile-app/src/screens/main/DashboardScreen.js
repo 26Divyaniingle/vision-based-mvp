@@ -5,8 +5,9 @@ import { User, LogOut, Globe, Play, ChevronRight, History, Bot, Mic, Activity, C
 import { Colors, Typography, Spacing, Radii, Shadows } from '../../theme';
 import GlassCard from '../../components/GlassCard';
 import PrimaryButton from '../../components/PrimaryButton';
-import { getUser, clearUser } from '../../utils/storage';
+import { getUser, clearUser, saveUser } from '../../utils/storage';
 import { getHistory, startConsultation, getTranscriberHistory } from '../../api/report';
+import { getPatientStatus } from '../../api/auth';
 import SecurityStatusPanel from '../../components/SecurityStatusPanel';
 import { ActivityIndicator, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -71,14 +72,26 @@ const DashboardScreen = ({ navigation }) => {
     setLoading(true);
     setError(false);
     const userData = await getUser();
-    setUser(userData);
+    let latestUser = userData;
+    
     if (userData?.id) {
       try {
-        const [sessionRes, transcriberRes] = await Promise.all([
+        // Fetch latest patient profile/limit status in parallel with history
+        const [sessionRes, transcriberRes, statusRes] = await Promise.all([
           getHistory(userData.id),
-          getTranscriberHistory(userData.id)
+          getTranscriberHistory(userData.id),
+          getPatientStatus(userData.id).catch(err => {
+            console.log("Error fetching patient status:", err);
+            return null;
+          })
         ]);
         
+        if (statusRes && statusRes.data) {
+          latestUser = { ...userData, ...statusRes.data };
+          await saveUser(latestUser);
+        }
+        setUser(latestUser);
+
         // Tag and merge
         const sessionHistory = (sessionRes.data || []).map(item => ({ ...item, type: 'session' }));
         const transcriberHistory = (transcriberRes.data || []).map(item => ({ ...item, type: 'transcriber' }));
@@ -91,7 +104,10 @@ const DashboardScreen = ({ navigation }) => {
       } catch (err) {
         console.log("Error fetching history:", err);
         setError(true);
+        setUser(userData);
       }
+    } else {
+      setUser(userData);
     }
     setLoading(false);
   };

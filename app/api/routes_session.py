@@ -133,4 +133,27 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
         "is_serious": bool(s.is_serious),
         "created_at": s.created_at
     }
+@router.post("/reset-access/{patient_id}")
+def reset_patient_access(patient_id: int, db: Session = Depends(get_db)):
+    """
+    Administrative endpoint to reset a patient's session count and unlock their account.
+    """
+    from app.database.crud import reset_user_access
+    success = reset_user_access(db, patient_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Patient not found.")
+    return {"success": True, "message": f"Access reset for patient {patient_id}."}
 
+@router.post("/reset-all-access")
+def reset_all_patients_access(db: Session = Depends(get_db)):
+    """
+    Administrative endpoint to reset session counts and unlock ALL patient accounts.
+    """
+    from app.database.models import Patient
+    try:
+        db.query(Patient).update({Patient.sessionCount: 0, Patient.isLocked: False})
+        db.commit()
+        return {"success": True, "message": "All patient accounts have been reset and unlocked."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

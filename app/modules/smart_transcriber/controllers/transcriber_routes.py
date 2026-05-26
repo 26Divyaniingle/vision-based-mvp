@@ -16,6 +16,7 @@ summary_service = SummaryService()
 async def start_consultation(patient_id: int, language: str = "Hinglish", db: Session = Depends(get_db)):
     """
     Initialize a new smart consultation session.
+    language: 'Hinglish' | 'English' | 'Hindi' | 'Marathi'
     """
     new_consultation = SmartConsultation(patient_id=patient_id, language=language)
     db.add(new_consultation)
@@ -44,9 +45,6 @@ async def stop_consultation(consultation_id: int, db: Session = Depends(get_db))
     db.commit()
     db.refresh(consultation)
     
-    # Trigger RAG indexing (Placeholder for future integration)
-    # await medical_rag_service.index_consultation(consultation)
-    
     return {
         "status": "stopped",
         "consultation": consultation.to_dict()
@@ -63,7 +61,17 @@ async def get_patient_history(patient_id: int, db: Session = Depends(get_db)):
 @router.websocket("/ws/{consultation_id}")
 async def transcriber_websocket(websocket: WebSocket, consultation_id: int, db: Session = Depends(get_db)):
     """
-    WebSocket for real-time consultation transcription and speaker identification.
+    WebSocket for real-time consultation transcription.
+
+    Client sends:
+      { "type": "audio_chunk", "audio_b64": "...", "verbatim": true|false }
+      { "type": "ping" }
+      { "type": "set_mode", "verbatim": true|false, "language": "English" }
+
+    Server sends:
+      { "type": "transcript_update", "speaker": "...", "text": "...", "verbatim": true|false }
+      { "type": "pong" }
+      { "type": "mode_ack", "verbatim": true|false, "language": "..." }
     """
     await websocket.accept()
     
@@ -72,52 +80,81 @@ async def transcriber_websocket(websocket: WebSocket, consultation_id: int, db: 
         await websocket.close(code=4004)
         return
 
+    # Session-level mode state (can be changed at runtime via set_mode message)
+    session_verbatim = False       # Default: medical + speaker ID mode
+    session_language = consultation.language or "Hinglish"
+
     try:
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
-            
-            if message.get("type") == "audio_chunk":
+            msg_type = message.get("type")
+
+            # ── Live mode toggle from client ────────────────────────────────────
+            if msg_type == "set_mode":
+                session_verbatim = bool(message.get("verbatim", False))
+                if message.get("language"):
+                    session_language = message["language"]
+                print(f"[Transcriber] Mode changed → verbatim={session_verbatim}, lang={session_language}")
+                await websocket.send_text(json.dumps({
+                    "type": "mode_ack",
+                    "verbatim": session_verbatim,
+                    "language": session_language
+                }))
+
+            # ── Audio chunk processing ──────────────────────────────────────────
+            elif msg_type == "audio_chunk":
                 audio_b64 = message.get("audio_b64")
                 if not audio_b64:
                     continue
+
+                # Per-chunk verbatim override (optional, falls back to session state)
+                chunk_verbatim = message.get("verbatim", session_verbatim)
                     
                 audio_bytes = base64.b64decode(audio_b64)
                 
-                # Optimized single-pass processing: STT + Hinglish Standardizer + Speaker ID
                 result = await transcription_service.process_transcription_segment(
-                    audio_bytes, list(consultation.transcript), language="Hinglish"
+                    audio_bytes,
+                    list(consultation.transcript),
+                    language=session_language,
+                    verbatim=chunk_verbatim
                 )
                 
                 if result:
                     speaker = result["speaker"]
                     text = result["text"]
+                    is_verbatim = result.get("raw", False)
                     
                     entry = {
                         "speaker": speaker,
                         "text": text,
+                        "verbatim": is_verbatim,
                         "timestamp": asyncio.get_event_loop().time()
                     }
                     
-                    # 3. Save to DB (In-memory list update for now, commit later or periodically)
-                    # For safety in this MVP, we'll append to the list and commit
+                    # Persist to DB
                     current_transcript = list(consultation.transcript)
                     current_transcript.append(entry)
                     consultation.transcript = current_transcript
                     db.commit()
                     
-                    # 4. Stream back to client
+                    # Stream back to client
                     await websocket.send_text(json.dumps({
                         "type": "transcript_update",
                         "speaker": speaker,
-                        "text": text
+                        "text": text,
+                        "verbatim": is_verbatim
                     }))
-                    
-            elif message.get("type") == "ping":
+
+            # ── Keepalive ───────────────────────────────────────────────────────
+            elif msg_type == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
                 
     except WebSocketDisconnect:
         print(f"Transcriber WebSocket disconnected: {consultation_id}")
     except Exception as e:
         print(f"Transcriber WebSocket error: {e}")
-        await websocket.close()
+        try:
+            await websocket.close()
+        except Exception:
+            pass

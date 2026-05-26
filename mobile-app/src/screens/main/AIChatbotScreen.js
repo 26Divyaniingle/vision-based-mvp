@@ -15,6 +15,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -47,6 +48,7 @@ const AIChatbotScreen = ({ navigation, route }) => {
   const [isTyping, setIsTyping] = useState(false);
 
   const scrollViewRef = useRef(null);
+  const inputRef = useRef(null);
 
   // ── Auto-scroll on new message ──
   useEffect(() => {
@@ -245,20 +247,80 @@ const AIChatbotScreen = ({ navigation, route }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
-        {/* Messages */}
+        {/* Messages / Welcome Grid */}
         <ScrollView
           ref={scrollViewRef}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {messages.map((msg, idx) => (
-            <ChatBubble
-              key={idx}
-              message={msg.content}
-              isUser={msg.role === 'user'}
-            />
-          ))}
+          {messages.length <= 1 ? (
+            <View style={styles.welcomeContainer}>
+              <View style={styles.welcomeHeader}>
+                <View style={styles.welcomeAvatar}>
+                  <Bot color={Colors.indigo} size={32} />
+                </View>
+                <Text style={styles.welcomeTitle}>MedSense AI Assistant</Text>
+                <Text style={styles.welcomeDesc}>
+                  Your secure AI companion for lab result extraction and medical analysis. Upload a document or type a question below to begin.
+                </Text>
+              </View>
+
+              <View style={styles.actionGrid}>
+                {/* Scan Card */}
+                <TouchableOpacity style={styles.actionCard} onPress={() => pickImage(true)}>
+                  <View style={[styles.actionCardIcon, { borderColor: Colors.indigo + '40', backgroundColor: Colors.indigo + '15' }]}>
+                    <Camera color={Colors.indigo} size={20} />
+                  </View>
+                  <View style={styles.actionCardContent}>
+                    <Text style={styles.actionCardTitle}>Scan Physical Report</Text>
+                    <Text style={styles.actionCardSub}>Take a clear camera photo of paper lab findings.</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Gallery Card */}
+                <TouchableOpacity style={styles.actionCard} onPress={() => pickImage(false)}>
+                  <View style={[styles.actionCardIcon, { borderColor: Colors.emerald + '40', backgroundColor: Colors.emerald + '15' }]}>
+                    <ImageIcon color={Colors.emerald} size={20} />
+                  </View>
+                  <View style={styles.actionCardContent}>
+                    <Text style={styles.actionCardTitle}>Upload Lab Image</Text>
+                    <Text style={styles.actionCardSub}>Analyze test reports stored as photos in your library.</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* PDF Card */}
+                <TouchableOpacity style={styles.actionCard} onPress={pickDocument}>
+                  <View style={[styles.actionCardIcon, { borderColor: Colors.amber + '40', backgroundColor: Colors.amber + '15' }]}>
+                    <Paperclip color={Colors.amber} size={20} />
+                  </View>
+                  <View style={styles.actionCardContent}>
+                    <Text style={styles.actionCardTitle}>Attach PDF Document</Text>
+                    <Text style={styles.actionCardSub}>Import and extract findings from lab sheets or PDF files.</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Question Card */}
+                <TouchableOpacity style={styles.actionCard} onPress={() => inputRef.current?.focus()}>
+                  <View style={[styles.actionCardIcon, { borderColor: Colors.purple + '40', backgroundColor: Colors.purple + '15' }]}>
+                    <Bot color={Colors.purple} size={20} />
+                  </View>
+                  <View style={styles.actionCardContent}>
+                    <Text style={styles.actionCardTitle}>Ask a Health Question</Text>
+                    <Text style={styles.actionCardSub}>Inquire about medical terms, symptoms, or remedies.</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            messages.map((msg, idx) => (
+              <ChatBubble
+                key={idx}
+                message={msg.content}
+                isUser={msg.role === 'user'}
+              />
+            ))
+          )}
           {isTyping && <TypingAnimation />}
         </ScrollView>
 
@@ -293,6 +355,7 @@ const AIChatbotScreen = ({ navigation, route }) => {
 
           {/* Text input */}
           <TextInput
+            ref={inputRef}
             style={styles.input}
             placeholder="Ask anything…"
             placeholderTextColor={Colors.textMuted}
@@ -340,7 +403,7 @@ const styles = StyleSheet.create({
   backBtn: { padding: 4 },
   headerCenter: {
     flexDirection: 'row',
-    alignItems: 'left',
+    alignItems: 'center',
     gap: 10,
   },
   botAvatar: {
@@ -362,7 +425,80 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
 
-  // Input bar — solid background so it's always visible
+  // Welcome Board
+  welcomeContainer: {
+    alignItems: 'center',
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+  welcomeHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  welcomeAvatar: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(99,102,241,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(99,102,241,0.4)',
+    marginBottom: 12,
+    ...Shadows.glow,
+  },
+  welcomeTitle: {
+    color: '#fff',
+    fontSize: 21,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  welcomeDesc: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 12,
+  },
+  actionGrid: {
+    width: '100%',
+    gap: 12,
+    marginBottom: 20,
+  },
+  actionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 16,
+    padding: 14,
+    gap: 14,
+  },
+  actionCardIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionCardContent: {
+    flex: 1,
+  },
+  actionCardTitle: {
+    color: '#fff',
+    fontSize: 14.5,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  actionCardSub: {
+    color: Colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+
+  // Input bar
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',

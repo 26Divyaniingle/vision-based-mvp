@@ -50,7 +50,7 @@ def register_face(db: Session, name: str, image_base64: str, age: int, phone: st
     patient = create_patient(db, name, token, json.dumps(emb), age, phone, email)
     
     # Return success with user information
-    return {"success": True, "token": token, "name": patient.name, "id": patient.id}
+    return {"success": True, "token": token, "name": patient.name, "id": patient.id, "sessionCount": patient.sessionCount, "isLocked": patient.isLocked}
 
 def login_face(db: Session, image_base64: str):
     """
@@ -86,7 +86,7 @@ def login_face(db: Session, image_base64: str):
     
     if patient:
         # Found a matching face! Return user information
-        return {"success": True, "token": patient.token, "name": patient.name, "id": patient.id, "score": score}
+        return {"success": True, "token": patient.token, "name": patient.name, "id": patient.id, "score": score, "sessionCount": patient.sessionCount, "isLocked": patient.isLocked}
     
     # No matching face found
     return {"success": False, "msg": "No matching face found or score too low", "score": score}

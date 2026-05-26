@@ -30,7 +30,7 @@ def login_token(db: Session, plain_token: str):
     
     if patient:
         # Token is valid! Return user information
-        return {"success": True, "name": patient.name, "id": patient.id, "token": patient.token}
+        return {"success": True, "name": patient.name, "id": patient.id, "token": patient.token, "sessionCount": patient.sessionCount, "isLocked": patient.isLocked}
     
     # Token not found or invalid
     return {"success": False, "msg": "Invalid token"}

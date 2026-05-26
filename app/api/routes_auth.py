@@ -93,5 +93,31 @@ def login_with_token(req: TokenLoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail=res["msg"])
     return res
 
+@router.get("/patient/{patient_id}")
+def get_patient_status(patient_id: int, db: Session = Depends(get_db)):
+    """
+    Get the latest patient status (sessionCount, isLocked)
+    """
+    from app.database.models import Patient
+    from app.database.crud import MAX_FREE_SESSIONS
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+        
+    # Auto-unlock user if the limit has increased and they are below the threshold
+    if patient.isLocked and patient.sessionCount < MAX_FREE_SESSIONS:
+        patient.isLocked = False
+        db.commit()
+        db.refresh(patient)
+        
+    return {
+        "id": patient.id,
+        "name": patient.name,
+        "email": patient.email,
+        "phone": patient.phone,
+        "sessionCount": patient.sessionCount,
+        "isLocked": patient.isLocked
+    }
+
 # Recovery endpoints - sub-router for password reset and OTP verification
 router.include_router(recovery_router, prefix="/recovery", tags=["recovery"])

@@ -73,59 +73,78 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
         except Exception as e:
             print(f"TTS Background Task Error: {e}")
 
-    async def run_vision_analysis(img_b64, reference_embedding=None):
-        nonlocal vision_task_active, total_frames, vision_frames_count, latest_emotion_metrics, identity_mismatch_count, session_restricted
+    async def run_vision_analysis(img_b64):
+        nonlocal vision_task_active, total_frames, vision_frames_count, latest_emotion_metrics, identity_mismatch_count, session_restricted, reference_embedding, last_sent_mismatch_count
         try:
-            # print(f"DEBUG: Processing vision frame {total_frames} (Session: {session_id})")
+            total_frames += 1
+            img_len = len(img_b64) if img_b64 else 0
             
+            # Periodic heartbeat log
+            if total_frames % 5 == 0:
+                has_emb = reference_embedding is not None and len(reference_embedding) > 0
+                print(f"DEBUG: Session {session_id} Heartbeat | Frame: {total_frames} | ImgLen: {img_len} | EmbLoaded: {has_emb} | Mismatches: {identity_mismatch_count}")
+
             # Identity Verification (Security Check)
-            if reference_embedding:
-                # Background monitoring should be slightly more lenient to catch moving faces
-                is_verified, score = await asyncio.to_thread(verify_face, img_b64, reference_embedding, enforce_detection=False)
+            if reference_embedding and len(reference_embedding) > 0:
+                # Background monitoring is slightly more lenient (threshold=0.48) to avoid false-positive alerts due to minor movements or changes in lighting
+                is_verified, score = await asyncio.to_thread(verify_face, img_b64, reference_embedding, enforce_detection=False, threshold=0.48)
                 
                 # Live security monitoring log
                 if total_frames % 10 == 0:
                     print(f"DEBUG Security (Session {session_id}): is_verified={is_verified}, score={score:.3f}")
 
-                if is_verified is False:
-                    identity_mismatch_count += 1
-                    print(f"SECURITY ALERT (Session: {session_id}): Unauthorized person access detected (score={score:.4f})")
+                # Log every verification attempt clearly
+                print(f"DEBUG: Session {session_id} Verification -> Result: {is_verified} (type: {type(is_verified)}), Score: {score:.4f}")
 
+                # Sync identity_mismatch_count from unresolved database alerts
+                try:
+                    identity_mismatch_count = count_unresolved_alerts(db, session_id)
+                except Exception as db_err:
+                    print(f"Error syncing alerts count: {db_err}")
+
+                if is_verified == False:
                     # Handle database alert logging
                     try:
-                        # Call synchronously since we are already in the background task loop
-                        # but check if we should offload ONLY the IO if needed.
-                        # For now, avoid passing 'db' to to_thread
                         create_security_alert(
                             db,
                             session_id,
                             patient_id if patient_id != -1 else 0,
                             round(float(score), 4),
                             "UNAUTHORIZED_ACCESS",
-                            f"Unauthorized person access detected. Distance: {score:.4f}",
+                            f"Unauthorized person detected. Distance: {score:.4f}",
                         )
+                        identity_mismatch_count = count_unresolved_alerts(db, session_id)
                     except Exception as db_err:
-                        print(f"Security alert DB write error: {db_err}")
+                        print(f"CRITICAL: Security alert DB write error: {db_err}")
+                        identity_mismatch_count += 1
+                        
+                    print(f"SECURITY ALERT (Session: {session_id}): Face mismatch detected! Count: {identity_mismatch_count}")
 
                     # Only send alert if mismatch count has increased
                     if identity_mismatch_count > last_sent_mismatch_count:
                         last_sent_mismatch_count = identity_mismatch_count
                         if websocket.client_state == WebSocketState.CONNECTED:
-                            await websocket.send_text(json.dumps({
+                            alert_msg = {
                                 "type": "identity_alert",
-                                "message": "SECURITY ALERT: Unauthorized person access detected.",
+                                "message": "SECURITY ALERT: Unauthorized person detected.",
                                 "score": round(float(score), 4),
                                 "mismatch_count": identity_mismatch_count,
                                 "restrict": identity_mismatch_count >= 3,
-                            }))
+                            }
+                            print(f"DEBUG: Sending identity_alert to frontend: {alert_msg}")
+                            await websocket.send_text(json.dumps(alert_msg))
                     
                     if identity_mismatch_count >= 3:
                         session_restricted = True
                 
-                elif is_verified is True:
-                    # Reset mismatch relay if a successful match occurs (self-healing)
+                elif is_verified == True:
                     if identity_mismatch_count > 0:
-                        print(f"DEBUG Security (Session {session_id}): Identity re-verified. Resetting mismatch count.")
+                        print(f"DEBUG: Identity re-verified via video for session {session_id}. Resetting count in DB.")
+                        try:
+                            from app.database.security_crud import resolve_security_alert
+                            resolve_security_alert(db, session_id)
+                        except Exception as db_err:
+                            print(f"Error resolving alerts: {db_err}")
                         identity_mismatch_count = 0
                         last_sent_mismatch_count = 0
                         session_restricted = False
@@ -141,8 +160,8 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         print(f"DEBUG: No face detected in vision frame for session {session_id}")
 
             else:
-                if total_frames % 20 == 0:
-                    print(f"DEBUG: Skipping identity verification - no reference embedding yet.")
+                if total_frames % 10 == 0:
+                    print(f"WARNING: Skipping identity check for {session_id} - No reference embedding found.")
 
 
             
@@ -207,7 +226,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         print(f"vision_update send error: {ve}")
                 # ───────────────────────────────────────────────────────────────
             
-            total_frames += 1
+            # total_frames is now incremented inside run_vision_analysis
             latest_emotion_metrics["total_frames"] = total_frames
             latest_emotion_metrics["emotion"] = latest_emotion_metrics["dominant_emotion"]
             
@@ -251,15 +270,22 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     
                     p_id = -1
                     try:
-                        p_id = int(patient_id)
-                        if p_id != -1:
-                            reference_embedding = get_patient_embedding(db, p_id)
-                            print(f"DEBUG: Loaded reference embedding for patient {p_id}. Length: {len(reference_embedding)}")
-                            if reference_embedding:
-                                await websocket.send_text(json.dumps({
-                                    "type": "status",
-                                    "text": "🛡️ Identity protection active for this session."
-                                }))
+                            p_id = int(patient_id)
+                            print(f"DEBUG: Processing 'start' for patient_id: {p_id}")
+                            if p_id != -1:
+                                reference_embedding = get_patient_embedding(db, p_id)
+                                print(f"DEBUG: Loaded reference embedding for patient {p_id}. Length: {len(reference_embedding)}")
+                                if reference_embedding:
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "text": "🛡️ Identity protection ACTIVE for this session."
+                                    }))
+                                else:
+                                    print(f"WARNING: No face registered for patient {p_id}")
+                                    await websocket.send_text(json.dumps({
+                                        "type": "status",
+                                        "text": "⚠️ Identity protection INACTIVE: No face registered for this profile."
+                                    }))
                             else:
                                 await websocket.send_text(json.dumps({
                                     "type": "status",
@@ -294,8 +320,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                             print(f"Error loading history: {hist_err}")
                             historical_context = ""
 
-
-
+                    # Wait for 5 seconds to ensure the doctor logo screen is visible for a premium transition
+                    # and to allow the patient's front camera and sensors to fully initialize.
+                    await asyncio.sleep(5)
                     
                     # Auto-trigger first question naturally translated
                     GREETINGS = {
@@ -308,7 +335,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         "German": f"Hallo {patient_name}, ich bin Ihr medizinischer KI-Assistent. Bitte sagen Sie mir, was Sie heute zu mir führt.",
                         "Italian": f"Salve {patient_name}, sono il suo assistente medico IA. La prego di dirmi cosa la porta qui oggi.",
                         "Russian": f"Здравствуйте, {patient_name}, я ваш медицинский ИИ-ассистент. Пожалуйста, расскажите мне, что вас беспокоит.",
-                        "Japanese": f"こんにちは {patient_name}さん、私はあなたの医療AIアシスタントです。今日はどうされましたか？",
+                        "Japanese": f"こんにちは {patient_name}さん, 私はあなたの医療AIアシスタントです。今日はどうされましたか？",
                         "Korean": f"안녕하세요 {patient_name}님, 저는 귀हा의 의료 AI 어시스턴트입니다. 오늘 어떤 일로 오셨는지 말씀해 주세요.",
                         "Chinese": f"您好 {patient_name}，我是您的医疗人工智能助理。请告诉我您今天哪里不舒服？",
                         "Marathi": f"नमस्कार {patient_name}, मी तुमचा मेडिकल एआय असिस्टंट आहे. कृपया मला सांगा आज तुम्ही इथे का आला आहात?",
@@ -318,12 +345,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     first_q = GREETINGS.get(client_lang, GREETINGS["English"])
                     conversation_history.append({"role": "bot", "text": first_q})
                     
-                    # Send Audio TTS of Q (Awaited to ensure synchronous delivery with text)
+                    # Send Audio TTS of Q (Awaited with a short timeout to prevent blocking the event loop)
                     try:
-                        audio_bytes = await generate_speech_bytes(first_q, language=client_lang)
+                        audio_bytes = await asyncio.wait_for(
+                            generate_speech_bytes(first_q, language=client_lang),
+                            timeout=3.0
+                        )
                         audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
                     except Exception as tts_err:
-                        print(f"Initial TTS Error: {tts_err}")
+                        print(f"Initial TTS Error or Timeout: {tts_err}")
                         audio_b64 = None
                     
                     # Send text and audio together
@@ -342,7 +372,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         if total_frames % 20 == 0:
                             print(f"DEBUG: Received video frame for session {session_id}")
                         vision_task_active = True
-                        asyncio.create_task(run_vision_analysis(img_b64, reference_embedding))
+                        asyncio.create_task(run_vision_analysis(img_b64))
 
                 elif msg_type == "audio_chunk":
                     # Patient sent audio explicitly or just transcribed text
@@ -451,10 +481,13 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                 "text": "🗣️ Preparing AI response..."
                             }))
                             try:
-                                audio_resp_bytes = await generate_speech_bytes(next_q, language=client_lang)
+                                audio_resp_bytes = await asyncio.wait_for(
+                                    generate_speech_bytes(next_q, language=client_lang),
+                                    timeout=3.0
+                                )
                                 resp_audio_b64 = base64.b64encode(audio_resp_bytes).decode("utf-8")
                             except Exception as tts_err:
-                                print(f"Question TTS Error: {tts_err}")
+                                print(f"Question TTS Error or Timeout: {tts_err}")
                                 resp_audio_b64 = None
                             
                             # Send text and audio together

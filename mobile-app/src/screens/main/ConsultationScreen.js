@@ -2,18 +2,20 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Alert, Dimensions, ActivityIndicator, TextInput, Keyboard,
-  KeyboardAvoidingView, Platform, StatusBar, Animated,
+  KeyboardAvoidingView, Platform, StatusBar, Animated, Image,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAudioPlayer, useAudioPlayerStatus, useAudioRecorder, requestRecordingPermissionsAsync, RecordingPresets } from 'expo-audio';
 import { File, Paths } from 'expo-file-system';
-import { Mic, MicOff, LogOut, Send, Shield, Eye, Activity, Zap, Brain, HeartPulse } from 'lucide-react-native';
+import { User, Mic, MicOff, LogOut, Send, Shield, Eye, Activity, Zap, Brain, HeartPulse } from 'lucide-react-native';
 import { Colors, Shadows } from '../../theme';
 import AnimatedWaveform from '../../components/AnimatedWaveform';
 import AIStatusBanner from '../../components/AIStatusBanner';
 import SecurityAlertOverlay from '../../components/SecurityAlertOverlay';
 import AccessLockedModal from '../../components/AccessLockedModal';
 import { buildWsUrl } from '../../api/report';
+
+const doctorAvatar = require('../../../assets/doctor_avatar.png');
 
 const { width: SCREEN_W } = Dimensions.get('window');
 // Sidebar: ~28% of screen width, min 100px, max 130px — comfortable on all mobile sizes
@@ -105,7 +107,11 @@ function ChatBubble({ msg }) {
   return (
     <View style={[cbStyles.wrapper, isBot ? cbStyles.botWrapper : cbStyles.patWrapper]}>
       <View style={cbStyles.avatar}>
-        <Text style={cbStyles.avatarText}>{isBot ? '🤖' : '👤'}</Text>
+        {isBot ? (
+          <Image source={doctorAvatar} style={cbStyles.avatarImage} />
+        ) : (
+          <Text style={cbStyles.avatarText}>👤</Text>
+        )}
       </View>
       <View style={[cbStyles.bubble, { maxWidth: BUBBLE_MAX_W },
         isBot ? cbStyles.botBubble : cbStyles.patBubble]}>
@@ -119,7 +125,8 @@ const cbStyles = StyleSheet.create({
   botWrapper:{ justifyContent: 'flex-start' },
   patWrapper:{ justifyContent: 'flex-end', flexDirection: 'row-reverse' },
   avatar:    { width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.07)',
-               justifyContent: 'center', alignItems: 'center', marginHorizontal: 4 },
+               justifyContent: 'center', alignItems: 'center', marginHorizontal: 4, overflow: 'hidden' },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 13 },
   avatarText:{ fontSize: 13 },
   bubble:    { padding: 11, borderRadius: 16 },
   botBubble: { backgroundColor: 'rgba(99,102,241,0.13)', borderWidth: 1,
@@ -165,7 +172,11 @@ const ConsultationScreen = ({ route, navigation }) => {
   const [securityScore,         setSecurityScore]         = useState(0);
   const [sessionRestricted,     setSessionRestricted]     = useState(false);
   const [accessLockedVisible,   setAccessLockedVisible]   = useState(route.params?.isLocked || false);
-  const [cameraRefreshKey,      setCameraRefreshKey]      = useState(0); // Used to nudge the camera back to life
+  const [cameraRefreshKey,      setCameraRefreshKey]      = useState(0); 
+  const isCameraReady     = useRef(false);
+  const isMounted         = useRef(true);
+  const isFinalizingRef   = useRef(false);
+  const isLockedRef       = useRef(false);
 
   const ws                = useRef(null);
   const cameraRef         = useRef(null);   // hidden — used only for frame capture
@@ -177,6 +188,7 @@ const ConsultationScreen = ({ route, navigation }) => {
   const isMutedRef        = useRef(isMuted);
   const playTTSRef        = useRef(null);
   const blinkAnim         = useRef(new Animated.Value(0.3)).current;
+  const isCapturing       = useRef(false);
 
   // Blinking animation for the "SECURE" dot
   useEffect(() => {
@@ -195,6 +207,10 @@ const ConsultationScreen = ({ route, navigation }) => {
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
   useEffect(() => {
+    isFinalizingRef.current = isFinalizing;
+  }, [isFinalizing]);
+
+  useEffect(() => {
     setIsAiSpeaking(playerStatus.playing);
     if (playerStatus.playing) {
       setCurrentPhase('speaking');
@@ -204,6 +220,7 @@ const ConsultationScreen = ({ route, navigation }) => {
   }, [playerStatus.playing]);
 
   useEffect(() => {
+    isMounted.current = true;
     (async () => {
       if (requestPermission) {
         const { status } = await requestPermission();
@@ -220,6 +237,7 @@ const ConsultationScreen = ({ route, navigation }) => {
     startVideoSampling();
     setupAudio();
     return () => {
+      isMounted.current = false;
       if (ws.current)              ws.current.close();
       if (frameInterval.current)   clearInterval(frameInterval.current);
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
@@ -267,6 +285,7 @@ const ConsultationScreen = ({ route, navigation }) => {
       const data = JSON.parse(e.data);
       switch (data.type) {
         case 'access_locked':
+          isLockedRef.current = true;
           setAccessLockedVisible(true);
           break;
         case 'question':
@@ -295,6 +314,9 @@ const ConsultationScreen = ({ route, navigation }) => {
           setCurrentPhase('processing');
           if (data.text) setMessages(prev => [...prev, { role: 'status', text: data.text }]);
           break;
+        case 'status':
+          if (data.text) setMessages(prev => [...prev, { role: 'status', text: data.text }]);
+          break;
         case 'vision_update':
           // Real-time patient biometric data from backend
           if (data.emotion)            setPatientEmotion(data.emotion);
@@ -307,6 +329,7 @@ const ConsultationScreen = ({ route, navigation }) => {
           setSecurityScore(data.score || 0);
           setSecurityMismatchCount(data.mismatch_count || 1);
           if (data.restrict) setSessionRestricted(true);
+          isCameraReady.current = false;
           setSecurityAlertVisible(true);
           setMessages(prev => [...prev, {
             role: 'status',
@@ -316,21 +339,33 @@ const ConsultationScreen = ({ route, navigation }) => {
         case 'finalize':
           setIsAiProcessing(false);
           setIsFinalizing(true);
+          isFinalizingRef.current = true;
           setCurrentPhase('finalizing');
-          setTimeout(() => navigation.replace('Results', {
-            diagnosis: data.diagnosis, 
-            sessionId, 
-            vision: data.vision,
-            remainingSessions: data.remaining_sessions
-          }), 2000);
+          setTimeout(() => {
+            if (isMounted.current) {
+              navigation.replace('Results', {
+                diagnosis: data.diagnosis, 
+                sessionId, 
+                vision: data.vision,
+                remainingSessions: data.remaining_sessions
+              });
+            }
+          }, 2000);
           break;
       }
     };
 
-    ws.current.onerror = (e) => console.error('WebSocket error:', e);
+    ws.current.onerror = (e) => {
+      if (isMounted.current) {
+        console.error('WebSocket error:', e);
+      }
+    };
     ws.current.onclose = () => {
       if (heartbeatInterval.current) clearInterval(heartbeatInterval.current);
-      if (!isFinalizing && reconnectAttempts.current < 5) {
+      if (!isMounted.current || isFinalizingRef.current || isLockedRef.current) {
+        return;
+      }
+      if (reconnectAttempts.current < 5) {
         setIsReconnecting(true);
         setCurrentPhase('reconnecting');
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
@@ -342,23 +377,37 @@ const ConsultationScreen = ({ route, navigation }) => {
 
   // ── Video sampling (camera hidden in UI, active for ML) ──────────────────────
   const startVideoSampling = () => {
+    if (frameInterval.current) clearInterval(frameInterval.current);
+    
+    console.log("Initializing video sampling loop...");
     frameInterval.current = setInterval(async () => {
-      // Don't sample if the security alert is showing (prevents camera hardware contention)
-      if (securityAlertVisible) return;
+      // 1. Skip if UI is busy, alert is showing, or camera is unmounted
+      if (securityAlertVisible || !isCameraReady.current || !cameraRef.current) {
+        return;
+      }
+      
+      // 2. Prevent concurrent captures
+      if (isCapturing.current) return;
 
-      if (cameraRef.current && ws.current && ws.current.readyState === WebSocket.OPEN) {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
         try {
-          const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7, scale: 0.8 });
-          ws.current.send(JSON.stringify({ type: 'video_frame', image_base64: photo.base64 }));
-        } catch (err) {
-          console.warn('Camera sampling error:', err);
-          // If we hit a hardware error, try to refreshing the key
-          if (err.message?.includes('ready')) {
-             setCameraRefreshKey(k => k + 1);
+          isCapturing.current = true;
+          const photo = await cameraRef.current.takePictureAsync({ 
+            base64: true, 
+            quality: 0.4, // Reduced quality for faster processing
+          });
+          
+          if (photo?.base64 && ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify({ type: 'video_frame', image_base64: photo.base64 }));
           }
+        } catch (err) {
+          console.warn('Background sampling error:', err.message);
+          // Don't refresh the key here as it causes unmount loops
+        } finally {
+          isCapturing.current = false;
         }
       }
-    }, 1000);
+    }, 5000); // 5 seconds is plenty for background identity monitoring
   };
 
   // ── Audio ────────────────────────────────────────────────────────────────────
@@ -368,11 +417,7 @@ const ConsultationScreen = ({ route, navigation }) => {
       Alert.alert('Permission needed', 'Audio permissions are required for clinical analysis.');
   };
 
-  const isMounted = useRef(true);
-  useEffect(() => {
-    isMounted.current = true;
-    return () => { isMounted.current = false; };
-  }, []);
+
 
   const playTTS = React.useCallback(async (base64Audio) => {
     if (!isMounted.current) return;
@@ -459,15 +504,33 @@ const ConsultationScreen = ({ route, navigation }) => {
         {/* ════════════ LEFT SIDEBAR — Patient Vision Panel ════════════════ */}
         <View style={[styles.sidebar, { width: SIDEBAR_W }]}>
 
-          {/* Patient Face Monitor */}
           <View style={styles.cameraMonitorContainer}>
-            <CameraView
-              key={`camera-${cameraRefreshKey}`}
-              ref={cameraRef}
-              style={styles.cameraMonitor}
-              facing="front"
-              zoom={0}
-            />
+            {(!securityAlertVisible && permission?.granted) ? (
+              <CameraView
+                key={`camera-${cameraRefreshKey}`}
+                ref={cameraRef}
+                style={styles.cameraMonitor}
+                facing="front"
+                zoom={0}
+                mute={true}
+                onCameraReady={() => {
+                  console.log("Background Camera READY");
+                  isCameraReady.current = true;
+                }}
+                onMountError={(err) => {
+                  console.error("Background Camera mount error:", err);
+                  isCameraReady.current = false;
+                }}
+              />
+            ) : (
+              <View style={[styles.cameraMonitor, { backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' }]}>
+                {securityAlertVisible ? (
+                  <Shield size={24} color={Colors.rose} opacity={0.5} />
+                ) : (
+                  <ActivityIndicator size="small" color={Colors.indigo} />
+                )}
+              </View>
+            )}
             <View style={styles.cameraOverlay}>
               <View style={styles.liveBadge}>
                 <Animated.View style={[styles.liveDot, { backgroundColor: Colors.rose, opacity: blinkAnim }]} />
@@ -563,6 +626,9 @@ const ConsultationScreen = ({ route, navigation }) => {
         >
           {/* Chat header */}
           <View style={styles.chatHeader}>
+            <View style={styles.headerPatientAvatar}>
+              <User color={Colors.indigo} size={18} />
+            </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.chatTitle} numberOfLines={1}>
                 {patient?.name || 'Consultation'}
@@ -589,7 +655,10 @@ const ConsultationScreen = ({ route, navigation }) => {
           >
             {messages.length === 0 && (
               <View style={styles.emptyState}>
-                <Text style={styles.emptyIcon}>🩺</Text>
+                <Image
+                  source={doctorAvatar}
+                  style={styles.emptyDoctorAvatar}
+                />
                 <Text style={styles.emptyTitle}>Session Started</Text>
                 <Text style={styles.emptySub}>
                   Use the mic or keyboard below to begin the consultation.
@@ -602,7 +671,7 @@ const ConsultationScreen = ({ route, navigation }) => {
             {isAiSpeaking && (
               <View style={[cbStyles.wrapper, cbStyles.botWrapper]}>
                 <View style={cbStyles.avatar}>
-                  <Text style={cbStyles.avatarText}>🤖</Text>
+                  <Image source={doctorAvatar} style={cbStyles.avatarImage} />
                 </View>
                 <View style={[cbStyles.botBubble, { padding: 12 }]}>
                   <AnimatedWaveform active color={Colors.indigo} />
@@ -699,10 +768,12 @@ const ConsultationScreen = ({ route, navigation }) => {
         patientId={patient?.id}
         sessionId={sessionId}
         onDismiss={() => {
+          isCameraReady.current = false;
           setSecurityAlertVisible(false);
           setCameraRefreshKey(k => k + 1);
         }}
         onVerified={() => {
+          isCameraReady.current = false;
           setSecurityAlertVisible(false);
           setSessionRestricted(false);
           setSecurityMismatchCount(0);
@@ -866,7 +937,7 @@ const styles = StyleSheet.create({
   secChipText:   { color: '#fff', fontSize: 8, fontWeight: '800' },
 
   /* ══ CHAT COLUMN ══ */
-  chatColumn: { flex: 1, flexDirection: 'column' },
+  chatColumn: { width: SCREEN_W - SIDEBAR_W, flexDirection: 'column' },
 
   chatHeader: {
     flexDirection: 'row', alignItems: 'center',
@@ -876,6 +947,25 @@ const styles = StyleSheet.create({
     backgroundColor: '#09091a',
     borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)',
   },
+  headerDoctorAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.4)',
+  },
+  headerPatientAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.4)',
+    backgroundColor: 'rgba(99,102,241,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   chatTitle:    { color: Colors.textPrimary, fontSize: 15, fontWeight: '700' },
   chatSubtitle: { color: Colors.textMuted, fontSize: 10, marginTop: 1 },
   headerWave:   { marginLeft: 8 },
@@ -883,8 +973,20 @@ const styles = StyleSheet.create({
   chatScroll:        { flex: 1 },
   chatScrollContent: { paddingVertical: 14 },
 
-  emptyState: { alignItems: 'center', marginTop: 50, paddingHorizontal: 24, opacity: 0.55 },
-  emptyIcon:  { fontSize: 40, marginBottom: 10 },
+  emptyState: { alignItems: 'center', marginTop: 50, paddingHorizontal: 24 },
+  emptyDoctorAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: 'rgba(99,102,241,0.6)',
+    // Glow/elevation
+    shadowColor: Colors.indigo,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+  },
   emptyTitle: { color: Colors.textSecondary, fontSize: 14, fontWeight: '700', marginBottom: 4 },
   emptySub:   { color: Colors.textMuted, fontSize: 11, textAlign: 'center', lineHeight: 17 },
 

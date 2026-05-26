@@ -42,3 +42,7 @@ export const reRegisterFace = (email, imageBase64, newToken) =>
     new_token: newToken,
     image_base64: imageBase64,
   });
+
+export const getPatientStatus = (patientId) =>
+  client.get(`/auth/patient/${patientId}`);
+

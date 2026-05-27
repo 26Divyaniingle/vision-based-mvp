@@ -26,103 +26,62 @@ class TranscriptionService:
         verbatim: bool = False
     ) -> dict:
         """
-        Processes one audio chunk.
-
-        verbatim=True:
-            - Calls Groq Whisper (whisper-large-v3-turbo) with a neutral prompt.
-            - Returns the raw text exactly as spoken. No LLM involved.
-            - Speaker is always 'Speaker' (no identification in this mode).
-
-        verbatim=False:
-            - Calls Groq Whisper (whisper-large-v3) with a medical prompt.
-            - Then sends through LLM for speaker attribution + Hinglish standardization.
+        Processes one audio chunk from the Smart AI Transcriber.
+        Ensures exact transcription (word-for-word) like the consultation STT,
+        while using context-aware LLM analysis to identify the speaker (Doctor vs Patient).
         """
-        # Step 1: Run STT
-        raw_text = await try_groq_stt(audio_bytes, language, verbatim=verbatim)
+        # Step 1: Run STT using our highly accurate whisper-large-v3 model
+        raw_text = await try_groq_stt(audio_bytes, language, verbatim=True)
         if not raw_text or len(raw_text.strip()) < 2:
             return None
 
-        # ── VERBATIM MODE: Keep raw text 100% exact, but run LLM solely to identify the speaker ──
-        if verbatim:
-            history_str = "\n".join([
-                f"{m.get('speaker', 'Unknown')}: {m.get('text', '')}"
-                for m in recent_history[-8:]
-            ])
-            
-            prompt = f"""
-            Role: Expert Medical Scribe.
-            Task: Classify the speaker of the new segment based on the conversation history.
-            
-            Rules:
-            - Analyze the new segment and decide if the speaker is "Doctor" or "Patient".
-            - Output MUST be JSON: {{"speaker": "Doctor"|"Patient"}}
-            - Do NOT transcribe, rewrite, or change anything in the text. Only identify the speaker.
-            
-            Recent History:
-            {history_str}
-            
-            NEW SEGMENT: "{raw_text}"
-            
-            JSON Result:
-            """
-            
-            speaker = "Doctor"
-            try:
-                response = await generate_response(prompt)
-                start_idx = response.find('{')
-                end_idx = response.rfind('}') + 1
-                if start_idx != -1 and end_idx != -1:
-                    data = json.loads(response[start_idx:end_idx])
-                    speaker = data.get("speaker", "Doctor")
-            except Exception as e:
-                print(f"Verbatim speaker identification error: {e}")
-                
-            return {
-                "speaker": speaker,
-                "text": raw_text,
-                "raw": True
-            }
-
-        # ── MEDICAL MODE: Run LLM for speaker ID + Hinglish standardization ───
+        # Step 2: Build conversation history context
         history_str = "\n".join([
             f"{m.get('speaker', 'Unknown')}: {m.get('text', '')}"
             for m in recent_history[-8:]
         ])
         
+        # Step 3: Call LLM strictly for context-based speaker diarization
         prompt = f"""
-        Role: Expert Medical Scribe.
-        Task: Standardize the input and identify the speaker.
-        
-        Rules:
-        - Output MUST be JSON: {{"speaker": "Doctor"|"Patient", "text": "Hinglish text"}}
-        - 'text' must be in Latin-script Hinglish (Romanized). 
-        - Remove any 'Doctor:' or 'Patient:' labels from 'text'.
-        - If input is Marathi/Hindi/English, convert to Hinglish.
-        
+        You are an expert clinical scribe. Analyze the NEW SEGMENT of a medical consultation and classify whether the speaker is the "Doctor" or the "Patient".
+
+        Context-Based Classification Rules:
+        1. DOCTOR: Typically greets the patient, asks questions about symptoms, inquires about history, explains diagnosis, gives instructions, or explains prescriptions.
+           Examples: "Aapko kya takleef hai?", "Headache kab se hai?", "Ye medicine din me do baar leni hai."
+        2. PATIENT: Typically answers questions, describes symptoms, pain, feelings, or daily habits.
+           Examples: "Mujhe kal se bukhar hai", "Nahi, checkup nahi kiya", "Headache bahut zyada hai."
+        3. CONVERSATIONAL FLOW: Use the Recent History to trace the dialogue turn-taking (e.g., a question from the Doctor is usually followed by a response from the Patient).
+
+        Guidelines:
+        - You MUST NOT change, edit, summarize, or transcribe the text.
+        - Output MUST be a clean JSON object with exactly one key: "speaker".
+        - The value of "speaker" must be either "Doctor" or "Patient".
+
         Recent History:
         {history_str}
-        
-        NEW SEGMENT: "{raw_text}"
-        
-        JSON Result:
+
+        NEW SEGMENT TO CLASSIFY: "{raw_text}"
+
+        JSON Output:
         """
         
-        response = await generate_response(prompt)
+        speaker = "Doctor" # Default fallback
         try:
+            response = await generate_response(prompt)
             start_idx = response.find('{')
             end_idx = response.rfind('}') + 1
             if start_idx != -1 and end_idx != -1:
                 data = json.loads(response[start_idx:end_idx])
-                return {
-                    "speaker": data.get("speaker", "Doctor"),
-                    "text": data.get("text", raw_text),
-                    "raw": False
-                }
-        except Exception:
-            pass
+                speaker = data.get("speaker", "Doctor")
+        except Exception as e:
+            print(f"Speaker identification error: {e}")
             
-        # Fallback if LLM fails
-        return {"speaker": "Doctor", "text": raw_text, "raw": False}
+        # Return exact words and sentences exactly as spoken
+        return {
+            "speaker": speaker,
+            "text": raw_text,
+            "raw": verbatim
+        }
 
     async def diarize_full_transcript(self, raw_transcript: list) -> list:
         """

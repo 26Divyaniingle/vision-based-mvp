@@ -45,41 +45,32 @@ async def try_groq_stt(audio_bytes: bytes, language: str = "English", verbatim: 
         "file": ("audio.m4a", audio_bytes, "audio/m4a"),
     }
     
-    if verbatim:
-        # ─── VERBATIM MODE ─────────────────────────────────────────────────────
-        # Neutral prompt — do NOT guide Whisper toward any domain.
-        # This makes it transcribe EXACTLY what it hears, like a recorder.
-        # Use whisper-large-v3-turbo: faster, still very accurate.
-        model = "whisper-large-v3-turbo"
-        if "hinglish" in lang_lower:
-            prompt = (
-                "Transcribe every word exactly as spoken. "
-                "This may include Hindi and English mixed together (Hinglish). "
-                "Write Hindi words in Roman/Latin script exactly as heard. "
-                "Do not translate, summarize, or change anything."
-            )
-        else:
-            prompt = (
-                "Transcribe every word exactly as spoken. "
-                "Do not translate, summarize, correct grammar, or change anything. "
-                "Capture exactly what is said word for word."
-            )
+    # Always use the full whisper-large-v3 model for peak accuracy (same as consultation STT)
+    model = "whisper-large-v3"
+    
+    if "hinglish" in lang_lower:
+        prompt = (
+            "Transcribe every word exactly as spoken. "
+            "Write Hindi and mixed English words in Roman/Latin script (Hinglish) exactly as heard. "
+            "Do NOT use Devanagari script. Keep clinical terms intact: BP, sugar, pain, fever, headache. "
+            "Do not translate, summarize, or alter any word."
+        )
+    elif "hindi" in lang_lower:
+        prompt = (
+            "Hindi: Transcribe every word exactly as spoken in Devanagari script. "
+            "Do not translate, summarize, or change any words."
+        )
+    elif "marathi" in lang_lower:
+        prompt = (
+            "Marathi: Transcribe every word exactly as spoken in Devanagari script. "
+            "Do not translate, summarize, or change any words."
+        )
     else:
-        # ─── MEDICAL MODE ──────────────────────────────────────────────────────
-        # Domain-specific prompt helps Whisper recognize medical terminology.
-        model = "whisper-large-v3"
-        if "hinglish" in lang_lower:
-            prompt = (
-                "Hinglish: 'Doctor: Hello, aap kaise feel kar rahe hain? Any headache or pain?' "
-                "Patient: 'Mujhe thoda fever hai aur weakness lag rahi hai.' "
-                "Important: Transcribe in Latin script (Romanized Hindi/English) only. "
-                "Do NOT use Devanagari. Capture medical terms accurately: BP, sugar, infection, diagnosis."
-            )
-        else:
-            prompt = (
-                "A clinical consultation. Keywords: symptoms, diagnosis, prescription, medication, "
-                "blood pressure, respiratory, cardiac, abdomen, persistent pain, history of illness."
-            )
+        prompt = (
+            "Transcribe every word exactly as spoken. "
+            "Do not translate, summarize, correct grammar, or change anything. "
+            "Capture exactly what is said word for word, especially clinical terms."
+        )
     
     data = {
         "model": model,

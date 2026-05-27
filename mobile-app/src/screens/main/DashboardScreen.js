@@ -137,7 +137,7 @@ const DashboardScreen = ({ navigation }) => {
       return;
     }
     const sessionId = `sess_${Date.now()}`;
-    navigation.navigate('Consultation', { sessionId, language, patient: user });
+    navigation.navigate('ConsultationIntro', { sessionId, language, patient: user });
   };
 
   const handleTranscriber = async () => {

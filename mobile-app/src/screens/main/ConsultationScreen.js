@@ -357,7 +357,8 @@ const ConsultationScreen = ({ route, navigation }) => {
 
     ws.current.onerror = (e) => {
       if (isMounted.current) {
-        console.error('WebSocket error:', e);
+        // Use warn (not error) to avoid triggering the Expo red overlay on retries
+        console.warn('WebSocket connection error — will auto-retry if applicable.');
       }
     };
     ws.current.onclose = () => {

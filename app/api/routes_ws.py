@@ -3,7 +3,7 @@ WebSocket Routes for Real-Time Streaming (Audio/Video).
 Manages full real-time flow: Speech -> Transcription -> Symptom Ext -> Next Q -> TTS TTS -> Audio output.
 """
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from starlette.websockets import WebSocketState
+from starlette.websockets import WebSocketState as WSS
 
 
 import json
@@ -32,6 +32,7 @@ active_connections = {}
 
 @router.websocket("/stream/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSession = Depends(get_db)):
+    # from starlette.websockets import WebSocketState
     await websocket.accept()
     active_connections[session_id] = websocket
     
@@ -123,7 +124,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     # Only send alert if mismatch count has increased
                     if identity_mismatch_count > last_sent_mismatch_count:
                         last_sent_mismatch_count = identity_mismatch_count
-                        if websocket.client_state == WebSocketState.CONNECTED:
+                        if websocket.client_state == WSS.CONNECTED:
                             alert_msg = {
                                 "type": "identity_alert",
                                 "message": "SECURITY ALERT: Unauthorized person detected.",
@@ -151,7 +152,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         
                 elif is_verified is None:
                     # No face detected - notify user via status message if they are waiting for an alert
-                    if websocket.client_state == WebSocketState.CONNECTED:
+                    if websocket.client_state == WSS.CONNECTED:
                         await websocket.send_text(json.dumps({
                             "type": "status",
                             "text": "🔍 Monitoring: No face clearly detected in frame."
@@ -208,7 +209,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                 latest_emotion_metrics["distress_flags"]["pain"] |= flags["pain"]
 
                 # ── Push live vision update to mobile sidebar ──────────────────
-                if websocket.client_state == WebSocketState.CONNECTED:
+                if websocket.client_state == WSS.CONNECTED:
                     try:
                         # Extract current frame values for real-time feel
                         curr_eye = analysis["features"].get("eye_strain_score", 0)
@@ -232,7 +233,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
             
             if flags["pain"]:
                 # Check connection still open before sending
-                if websocket.client_state == WebSocketState.CONNECTED:
+                if websocket.client_state == WSS.CONNECTED:
                     await websocket.send_text(json.dumps({
                         "type": "alert",
                         "message": "Pain expressions detected. I'm noting this in your profile."

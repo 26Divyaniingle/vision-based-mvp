@@ -18,7 +18,7 @@ class AIAssistantService:
         """
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Authorization": f"Bearer {settings.groq_api_key}",
             "Content-Type": "application/json"
         }
         
@@ -57,7 +57,7 @@ class AIAssistantService:
         """
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Authorization": f"Bearer {settings.groq_api_key}",
             "Content-Type": "application/json"
         }
         

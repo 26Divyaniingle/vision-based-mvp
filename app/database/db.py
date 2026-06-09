@@ -9,9 +9,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import event  # Used for database event listeners
 from .models import Base, Patient, Session as SessionModel  # Import database models
-from .security_models import SecurityAlert  # Security alerts table — must be imported so Base sees it
+from .security_models import SecurityAlert  
+from app.modules.smart_transcriber.models.transcriber_models import SmartConsultation
 from app.config import settings
-from app.utils.export_csv import export_table_to_csv  # Utility to export data to CSV
+from app.utils.export_csv import export_table_to_csv  
 
 import threading  # Used to run CSV export in background
 
@@ -61,12 +62,24 @@ def session_after_insert(mapper, connection, target):
             
     threading.Thread(target=run_export, daemon=True).start()
 
+@event.listens_for(SmartConsultation, 'after_insert')
+def smart_consultation_after_insert(mapper, connection, target):
+    def run_export():
+        db = SessionLocal()
+        try:
+            export_table_to_csv(SmartConsultation, db)
+        finally:
+            db.close()
+            
+    threading.Thread(target=run_export, daemon=True).start()
+
 # Initial Export (Backgrounded at startup)
 def initial_export_bg():
     db = SessionLocal()
     try:
         export_table_to_csv(Patient, db)
         export_table_to_csv(SessionModel, db)
+        export_table_to_csv(SmartConsultation, db)
     finally:
         db.close()
 

@@ -12,12 +12,12 @@ async def generate_response(prompt: str) -> str:
     Generates a response using ONLY Groq AI with Llama 3.3.
     This provides high performance and low latency as requested.
     """
-    if not settings.GROQ_API_KEY:
-        return "ERROR: Groq API key is missing. Please configure GROQ_API_KEY in your .env file."
+    if not settings.groq_api_key:
+        return "ERROR: Groq API key is missing. Please configure GROQ_API_KEY in your production environment variables."
     
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+        "Authorization": f"Bearer {settings.groq_api_key}",
         "Content-Type": "application/json"
     }
     

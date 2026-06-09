@@ -10,6 +10,12 @@ import streamlit.components.v1 as components
 API_URL = "http://localhost:8000"
 WS_URL = "ws://localhost:8000/ws/stream"
 
+# API_URL = "https://draimcp.myecommerce.in"
+# WS_URL = "wss://draimcp.myecommerce.in/ws/stream"
+
+
+
+
 st.set_page_config(
     layout="wide",
     page_title="AI Medical Interview Assistant",

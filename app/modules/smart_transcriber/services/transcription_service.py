@@ -15,7 +15,7 @@ class TranscriptionService:
     """
     
     def __init__(self):
-        self.api_key = settings.GROQ_API_KEY
+        self.api_key = settings.groq_api_key
         self.client = httpx.AsyncClient(timeout=30.0)
 
     async def process_transcription_segment(

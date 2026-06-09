@@ -10,16 +10,19 @@ import threading
 
 # Global instance for reuse
 _detector = None
+_failed_to_init = False
 _lock = threading.Lock()
 
 def get_face_landmarker():
-    global _detector
+    global _detector, _failed_to_init
+    if _failed_to_init:
+        return None
+        
     with _lock:
         if _detector is None:
             try:
                 model_path = os.path.join(os.path.dirname(__file__), "face_landmarker.task")
                 if not os.path.exists(model_path):
-                    # Fallback path for different launch contexts
                     model_path = os.path.abspath("app/vision/face_landmarker.task")
                 
                 base_options = python.BaseOptions(model_asset_path=model_path)
@@ -31,7 +34,8 @@ def get_face_landmarker():
                 )
                 _detector = vision.FaceLandmarker.create_from_options(options)
             except Exception as e:
-                print(f"Error initializing FaceLandmarker: {e}")
+                print(f"CRITICAL: Failed to initialize FaceLandmarker (Missing system libs?): {e}")
+                _failed_to_init = True
                 _detector = None
     return _detector
 

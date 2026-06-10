@@ -17,8 +17,7 @@ class Settings(BaseSettings):
     # API Keys for different LLM providers (Large Language Models)
     GEMINI_API_KEY: str = ""  # Google Gemini API key (can be multiple comma-separated keys)
     OPENAI_API_KEY: str = ""  # OpenAI API key for GPT models
-    GROQ_API_KEY: str = "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"  
- # Groq API key for alternative LLM provider
+    GROQ_API_KEY: str = ""  # Groq API key for alternative LLM provider (read from .env)
     OLLAMA_BASE_URL: str = "http://localhost:11434"  # Local Ollama server URL for offline LLM
     
     def _clean_key(self, key: str) -> str:

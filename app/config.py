@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     
     # Database configuration
     _base_dir: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    DATABASE_URL: str = f"sqlite:///{os.path.join(_base_dir, 'data', 'vision_agent.db')}"  # SQLite database path
+    DATABASE_URL: str = ""  # Supabase PostgreSQL connection (read from .env or environment variable)
     
     # LLM Model selection
     MODEL_NAME: str = "gpt-4o"  # Default model name (used as fallback for medical responses)

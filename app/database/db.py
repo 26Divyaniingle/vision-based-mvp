@@ -15,9 +15,9 @@ from app.utils.export_csv import export_table_to_csv  # Utility to export data t
 
 import threading  # Used to run CSV export in background
 
-# Create the database engine using SQLite
-# check_same_thread=False allows the database to be used from multiple threads
-engine = create_engine(settings.DATABASE_URL, connect_args={"check_same_thread": False})
+# Create the database engine using PostgreSQL (Supabase)
+# pool_pre_ping=True ensures the connection is healthy before using it
+engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True, echo=False)
 
 # Create a session factory that produces database sessions
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

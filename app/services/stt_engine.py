@@ -114,6 +114,8 @@ async def try_groq_stt(audio_bytes: bytes, language: str = "English", verbatim: 
             
             return text
         print(f"Groq STT Error: {response.status_code} - {response.text}")
+        if response.status_code == 401:
+            print("CRITICAL: Groq API Key is invalid or expired. Transcription will not work.")
     except Exception as e:
         print(f"Groq STT Request failed: {e}")
     return None

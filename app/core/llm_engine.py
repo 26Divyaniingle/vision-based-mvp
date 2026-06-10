@@ -41,6 +41,8 @@ async def generate_response(prompt: str) -> str:
         
         error_detail = response.text
         print(f"Groq API Error: {response.status_code} - {error_detail}")
+        if response.status_code == 401:
+            return "ERROR: Groq API Key is invalid or expired. Please update GROQ_API_KEY in your production environment."
         return f"ERROR: Groq AI service returned an error ({response.status_code})."
         
     except httpx.TimeoutException:

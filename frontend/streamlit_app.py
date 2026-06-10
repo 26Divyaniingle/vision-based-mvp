@@ -7,11 +7,11 @@ import time
 import uuid
 import streamlit.components.v1 as components
 
-API_URL = "http://localhost:8000"
-WS_URL = "ws://localhost:8000/ws/stream"
+# API_URL = "http://localhost:8000"
+# WS_URL = "ws://localhost:8000/ws/stream"
 
-# API_URL = "https://draimcp.myecommerce.in"
-# WS_URL = "wss://draimcp.myecommerce.in/ws/stream"
+API_URL = "https://draimcp.myecommerce.in"
+WS_URL = "wss://draimcp.myecommerce.in/ws/stream"
 
 
 

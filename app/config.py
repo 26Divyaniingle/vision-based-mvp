@@ -17,7 +17,8 @@ class Settings(BaseSettings):
     # API Keys for different LLM providers (Large Language Models)
     GEMINI_API_KEY: str = ""  # Google Gemini API key (can be multiple comma-separated keys)
     OPENAI_API_KEY: str = ""  # OpenAI API key for GPT models
-    GROQ_API_KEY: str = ""  # Groq API key for alternative LLM provider
+    GROQ_API_KEY: str = "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"  
+ # Groq API key for alternative LLM provider
     OLLAMA_BASE_URL: str = "http://localhost:11434"  # Local Ollama server URL for offline LLM
     
     def _clean_key(self, key: str) -> str:
@@ -50,8 +51,18 @@ class Settings(BaseSettings):
         return self._clean_key(val)
     
     # Database configuration
-    _base_dir: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    DATABASE_URL: str = f"sqlite:///{os.path.join(_base_dir, 'data', 'vision_agent.db')}"  # SQLite database path
+    @property
+    def DATABASE_URL(self) -> str:
+        """Returns the database connection URL, prioritizing environment variables and fixing 'postgres://' if needed."""
+        url = os.getenv("DATABASE_URL")
+        if url and url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+            
+        if url:
+            return url
+            
+        _base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return f"sqlite:///{os.path.join(_base_dir, 'data', 'vision_agent.db')}"
     
     # LLM Model selection
     MODEL_NAME: str = "gpt-4o"  # Default model name (used as fallback for medical responses)

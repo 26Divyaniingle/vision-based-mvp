@@ -1,3 +1,4 @@
+psycopg2-binary
 fastapi
 uvicorn[standard]
 sqlalchemy
@@ -18,10 +19,8 @@ websockets
 edge-tts
 twilio
 transformers
-torch
 pandas
 numpy
-torchaudio
 openai
 fpdf2
 bcrypt==4.1.3

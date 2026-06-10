@@ -14,13 +14,13 @@ async def try_groq_stt(audio_bytes: bytes, language: str = "English", verbatim: 
                      Returns EXACTLY what was spoken, same as a voice recorder.
     verbatim=False → Medical mode: whisper-large-v3, medical domain prompt.
     """
-    if not settings.GROQ_API_KEY:
-        print("Groq API Key missing for STT")
+    if not settings.groq_api_key:
+        print("CRITICAL: Groq API Key missing for STT. Ensure GROQ_API_KEY is set in production environment variables.")
         return None
     
     url = "https://api.groq.com/openai/v1/audio/transcriptions"
     headers = {
-        "Authorization": f"Bearer {settings.GROQ_API_KEY}"
+        "Authorization": f"Bearer {settings.groq_api_key}"
     }
     
     # Language code mapping for Whisper
@@ -114,6 +114,8 @@ async def try_groq_stt(audio_bytes: bytes, language: str = "English", verbatim: 
             
             return text
         print(f"Groq STT Error: {response.status_code} - {response.text}")
+        if response.status_code == 401:
+            print("CRITICAL: Groq API Key is invalid or expired. Transcription will not work.")
     except Exception as e:
         print(f"Groq STT Request failed: {e}")
     return None

@@ -18,7 +18,7 @@ class AIAssistantService:
         """
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Authorization": f"Bearer {settings.groq_api_key}",
             "Content-Type": "application/json"
         }
         
@@ -57,7 +57,7 @@ class AIAssistantService:
         """
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
-            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Authorization": f"Bearer {settings.groq_api_key}",
             "Content-Type": "application/json"
         }
         
@@ -69,7 +69,7 @@ class AIAssistantService:
         )
         
         payload = {
-            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+            "model": "llama-3.2-11b-vision-preview",
             "messages": [
                 {
                     "role": "user",
@@ -101,6 +101,8 @@ class AIAssistantService:
             
             error_msg = response.text
             print(f"Vision API Error: {response.status_code} - {error_msg}")
+            if response.status_code == 401:
+                return {"success": False, "error": "Groq API Key is invalid or expired. Please check your GROQ_API_KEY."}
             return {"success": False, "error": f"Vision API error {response.status_code}: {error_msg[:100]}"}
         except Exception as e:
             print(f"Exception during report analysis: {str(e)}")

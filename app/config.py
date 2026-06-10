@@ -17,9 +17,16 @@ class Settings(BaseSettings):
     # API Keys for different LLM providers (Large Language Models)
     GEMINI_API_KEY: str = ""  # Google Gemini API key (can be multiple comma-separated keys)
     OPENAI_API_KEY: str = ""  # OpenAI API key for GPT models
-    GROQ_API_KEY: str = ""  # Groq API key for alternative LLM provider
+    GROQ_API_KEY: str = "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"  
+ # Groq API key for alternative LLM provider
     OLLAMA_BASE_URL: str = "http://localhost:11434"  # Local Ollama server URL for offline LLM
     
+    def _clean_key(self, key: str) -> str:
+        """Helper to strip spaces and quotes from keys."""
+        if not key:
+            return ""
+        return key.strip().strip('"').strip("'")
+
     @property
     def gemini_keys(self) -> list:
         """
@@ -29,11 +36,33 @@ class Settings(BaseSettings):
         if not self.GEMINI_API_KEY:
             return []
         # Strip quotes and whitespace from each key
-        return [k.strip().strip('"').strip("'") for k in self.GEMINI_API_KEY.split(",") if k.strip()]
+        return [self._clean_key(k) for k in self.GEMINI_API_KEY.split(",") if k.strip()]
+    
+    @property
+    def groq_api_key(self) -> str:
+        """Returns cleaned Groq API key, checking environment explicitly as fallback."""
+        val = os.getenv("GROQ_API_KEY") or os.getenv("groq_api_key") or self.GROQ_API_KEY
+        return self._clean_key(val)
+    
+    @property
+    def openai_api_key(self) -> str:
+        """Returns cleaned OpenAI API key, checking environment explicitly as fallback."""
+        val = os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key") or self.OPENAI_API_KEY
+        return self._clean_key(val)
     
     # Database configuration
-    _base_dir: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    DATABASE_URL: str = ""  # Supabase PostgreSQL connection (read from .env or environment variable)
+    @property
+    def DATABASE_URL(self) -> str:
+        """Returns the database connection URL, prioritizing environment variables and fixing 'postgres://' if needed."""
+        url = os.getenv("DATABASE_URL")
+        if url and url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+            
+        if url:
+            return url
+            
+        _base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return f"sqlite:///{os.path.join(_base_dir, 'data', 'vision_agent.db')}"
     
     # LLM Model selection
     MODEL_NAME: str = "gpt-4o"  # Default model name (used as fallback for medical responses)
@@ -46,9 +75,17 @@ class Settings(BaseSettings):
     SENDGRID_API_KEY: str = ""  # SendGrid API key for professional email delivery
     
     # Environment file path configuration
-    _env_path: str = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
-    model_config = SettingsConfigDict(env_file=_env_path, env_file_encoding="utf-8", extra="ignore")
+    # Load from .env if it exists, but allow OS environment variables to override
+    model_config = SettingsConfigDict(
+        env_file=(".env", ".env.local", ".env.prod"),
+        env_file_encoding="utf-8", 
+        extra="ignore"
+    )
 
 # Create a single global settings instance used throughout the application
 settings = Settings()
+
+# Post-load validation for production visibility
+if not settings.groq_api_key:
+    print("CRITICAL WARNING: GROQ_API_KEY is not configured. Live consultation transcription will fail.")
 

@@ -39,10 +39,15 @@ def create_security_alert(
         alert_type=alert_type,
         description=description,
     )
-    db.add(alert)
-    db.commit()
-    db.refresh(alert)
-    return alert
+    try:
+        db.add(alert)
+        db.commit()
+        db.refresh(alert)
+        return alert
+    except Exception as e:
+        db.rollback()
+        print(f"Error creating security alert: {e}")
+        return alert
 
 
 def get_alerts_for_session(db: DBSession, session_id: str) -> List[SecurityAlert]:
@@ -107,10 +112,14 @@ def resolve_security_alert(db: DBSession, session_id: str) -> bool:
     )
     if not updated:
         return False
-    for alert in updated:
-        alert.resolved = True
-        alert.re_verified_at = now
-    db.commit()
+    try:
+        for alert in updated:
+            alert.resolved = True
+            alert.re_verified_at = now
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"Error resolving security alerts: {e}")
     return True
 
 

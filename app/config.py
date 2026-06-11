@@ -53,15 +53,26 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         """Returns the database connection URL, prioritizing environment variables and fixing 'postgres://' if needed."""
+        from urllib.parse import quote_plus
+        
+        # Try to get from environment variable first
         url = os.getenv("DATABASE_URL")
+        
+        # If no environment variable is found, allow individual overrides or use medsense defaults
+        if not url:
+            user = os.getenv("DB_USER") or os.getenv("USER") or "medsense"
+            raw_password = os.getenv("DB_PASSWORD") or os.getenv("PASSWORD") or "udjsncnfkdj#343@"
+            password = quote_plus(raw_password)
+            host = os.getenv("DB_HOST") or "89.233.105.252"
+            port = os.getenv("DB_PORT") or "5432"
+            db = os.getenv("DB_NAME") or os.getenv("DB") or "medsense"
+            url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
+            
+        # SQLAlchemy requires 'postgresql://' instead of 'postgres://'
         if url and url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
             
-        if url:
-            return url
-            
-        _base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return f"sqlite:///{os.path.join(_base_dir, 'data', 'vision_agent.db')}"
+        return url
     
     # LLM Model selection
     MODEL_NAME: str = "gpt-4o"  # Default model name (used as fallback for medical responses)

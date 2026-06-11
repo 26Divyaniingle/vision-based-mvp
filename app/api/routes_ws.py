@@ -81,9 +81,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
             img_len = len(img_b64) if img_b64 else 0
             
             # Periodic heartbeat log
-            if total_frames % 5 == 0:
+            if total_frames % 10 == 0:
                 has_emb = reference_embedding is not None and len(reference_embedding) > 0
-                print(f"DEBUG: Session {session_id} Heartbeat | Frame: {total_frames} | ImgLen: {img_len} | EmbLoaded: {has_emb} | Mismatches: {identity_mismatch_count}")
+                print(f"DEBUG: Session {session_id} Vision Loop | Frame: {total_frames} | ImgLen: {img_len} | EmbLoaded: {has_emb}")
 
             # Identity Verification (Security Check)
             if reference_embedding and len(reference_embedding) > 0:
@@ -101,6 +101,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                 try:
                     identity_mismatch_count = count_unresolved_alerts(db, session_id)
                 except Exception as db_err:
+                    db.rollback()
                     print(f"Error syncing alerts count: {db_err}")
 
                 if is_verified == False:
@@ -116,6 +117,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         )
                         identity_mismatch_count = count_unresolved_alerts(db, session_id)
                     except Exception as db_err:
+                        db.rollback()
                         print(f"CRITICAL: Security alert DB write error: {db_err}")
                         identity_mismatch_count += 1
                         
@@ -167,7 +169,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
 
             
             # Offload CPU-bound CV tasks to a separate thread
-
             analysis = await asyncio.to_thread(analyze_webcam_frame, img_b64)
             
             # Update average metrics only if face was detected
@@ -175,6 +176,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
             face_detected = analysis["features"].get("face_detected", False)
             flags = analysis["distress_flags"]
             
+            # NEW: Log analysis results for debugging
+            if total_frames % 10 == 0:
+                print(f"DEBUG Vision (Session {session_id}): FaceDetected={face_detected}, Emotion={emo}, Distress={flags}")
+
             if emo or face_detected:
                 vision_frames_count += 1
                 latest_emotion_metrics["vision_frames_count"] = vision_frames_count
@@ -185,8 +190,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     counts[emo] = counts.get(emo, 0) + 1
                     
                     # Mature Output: Weighted Election for dominant_emotion
+                    all_counts_sum = sum(counts.values()) or 1
                     clinical_total = sum(counts.get(e, 0) for e in ['sad', 'fear', 'angry', 'disgust'])
-                    clinical_ratio = clinical_total / sum(counts.values())
+                    clinical_ratio = clinical_total / all_counts_sum
                     
                     if clinical_ratio > 0.15:
                         # Filter counts to only clinical and pick max
@@ -293,6 +299,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                     "text": "⚠️ Identity protection inactive: No face registered."
                                 }))
                     except (ValueError, TypeError):
+                        db.rollback()
                         print(f"DEBUG: Invalid patient_id format: {patient_id}")
 
                     # --- SESSION LIMIT CHECK ---
@@ -318,12 +325,14 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                         try:
                             historical_context = HistoryService.get_patient_history_summary(db, p_id)
                         except Exception as hist_err:
+                            db.rollback()
                             print(f"Error loading history: {hist_err}")
                             historical_context = ""
 
                     # Wait for 5 seconds to ensure the doctor logo screen is visible for a premium transition
                     # and to allow the patient's front camera and sensors to fully initialize.
-                    await asyncio.sleep(5)
+                    # User requested exactly 2 seconds delay for doctor screen transition
+                    await asyncio.sleep(2)
                     
                     # Auto-trigger first question naturally translated
                     GREETINGS = {
@@ -346,15 +355,18 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                     first_q = GREETINGS.get(client_lang, GREETINGS["English"])
                     conversation_history.append({"role": "bot", "text": first_q})
                     
-                    # Send Audio TTS of Q (Awaited with a short timeout to prevent blocking the event loop)
+                    # Remove wait_for timeout to allow generation to complete regardless of speed
                     try:
-                        audio_bytes = await asyncio.wait_for(
-                            generate_speech_bytes(first_q, language=client_lang),
-                            timeout=3.0
-                        )
-                        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+                        print(f"DEBUG: Generating initial greeting TTS for lang: {client_lang}")
+                        audio_bytes = await generate_speech_bytes(first_q, language=client_lang)
+                        if audio_bytes:
+                            audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+                            print(f"DEBUG: Initial TTS generated: {len(audio_bytes)} bytes")
+                        else:
+                            print("WARNING: Initial TTS generated 0 bytes.")
+                            audio_b64 = None
                     except Exception as tts_err:
-                        print(f"Initial TTS Error or Timeout: {tts_err}")
+                        print(f"Initial TTS Error: {tts_err}")
                         audio_b64 = None
                     
                     # Send text and audio together
@@ -446,25 +458,56 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                     "prevention": ["Consult a doctor."]
                                 }
                             
-                            # Save session to SQLite DB (Wrapped in try/except)
+                            # Save session to Database (Hardened for PostgreSQL)
                             try:
+                                # Ensure lists are actually lists and dicts are dicts for SQLAlchemy JSON column
+                                safe_transcript = list(conversation_history) if conversation_history else []
+                                safe_symptoms = list(extracted_symptoms) if extracted_symptoms else []
+                                safe_emotion = dict(latest_emotion_metrics) if latest_emotion_metrics else {}
+                                
+                                # Medication is a String column, so json.dumps is correct, but let's ensure it's not None
+                                medication_data = agent_res.get("medication", {})
+                                medication_str = json.dumps(medication_data) if medication_data else "{}"
+
                                 create_session(
                                     db=db,
-                                    session_id=session_id,
-                                    patient_id=patient_id,
-                                    transcript=conversation_history,
-                                    symptoms=list(extracted_symptoms),
-                                    emotion_metrics=latest_emotion_metrics,
-                                    condition=agent_res.get("condition", "Unknown"),
-                                    confidence=agent_res.get("confidence", 0.0),
-                                    medication=json.dumps(agent_res.get("medication", {})),
+                                    session_id=str(session_id),
+                                    patient_id=int(patient_id),
+                                    transcript=safe_transcript,
+                                    symptoms=safe_symptoms,
+                                    emotion_metrics=safe_emotion,
+                                    condition=str(agent_res.get("condition", "Unknown")),
+                                    confidence=float(agent_res.get("confidence", 0.0)),
+                                    medication=medication_str,
                                     safety=int(agent_res.get("safety_passed", 0)),
-                                    distress=latest_emotion_metrics["distress_flags"]["pain"] or latest_emotion_metrics["distress_flags"]["stress"],
-                                    is_serious=agent_res.get("is_serious", False)
+                                    distress=bool(latest_emotion_metrics["distress_flags"]["pain"] or latest_emotion_metrics["distress_flags"]["stress"]),
+                                    is_serious=bool(agent_res.get("is_serious", False))
                                 )
+                                print(f"SUCCESS: Session {session_id} saved to PostgreSQL.")
+
+                                # NEW: Save to smart_consultations table as well to satisfy user request for ALL tables storage
+                                try:
+                                    from app.modules.smart_transcriber.models.transcriber_models import SmartConsultation
+                                    new_smart = SmartConsultation(
+                                        patient_id=int(patient_id),
+                                        session_id=str(session_id),
+                                        language=client_lang,
+                                        transcript=safe_transcript,
+                                        summary=str(agent_res.get("condition", "Medical AI Consultation")),
+                                        symptoms=safe_symptoms,
+                                        medical_keywords=agent_res.get("medication", {}).get("allopathic", []),
+                                        duration="Live AI Session"
+                                    )
+                                    db.add(new_smart)
+                                    db.commit()
+                                    print(f"SUCCESS: SmartConsultation duplicate saved for {session_id}")
+                                except Exception as smart_err:
+                                    print(f"Non-critical: SmartConsultation save failed (maybe duplicate session_id): {smart_err}")
 
                             except Exception as db_err:
-                                print(f"DB Update Error during finalize: {db_err}")
+                                import traceback
+                                print(f"CRITICAL DB ERROR: Session {session_id} failed to save.")
+                                traceback.print_exc()
                             
                             await websocket.send_text(json.dumps({
                                 "type": "finalize",
@@ -482,13 +525,16 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, db: DBSessio
                                 "text": "🗣️ Preparing AI response..."
                             }))
                             try:
-                                audio_resp_bytes = await asyncio.wait_for(
-                                    generate_speech_bytes(next_q, language=client_lang),
-                                    timeout=3.0
-                                )
-                                resp_audio_b64 = base64.b64encode(audio_resp_bytes).decode("utf-8")
+                                print(f"DEBUG: Generating question TTS for lang: {client_lang}")
+                                audio_resp_bytes = await generate_speech_bytes(next_q, language=client_lang)
+                                if audio_resp_bytes:
+                                    resp_audio_b64 = base64.b64encode(audio_resp_bytes).decode("utf-8")
+                                    print(f"DEBUG: Question TTS generated: {len(audio_resp_bytes)} bytes")
+                                else:
+                                    print("WARNING: Question TTS generated 0 bytes.")
+                                    resp_audio_b64 = None
                             except Exception as tts_err:
-                                print(f"Question TTS Error or Timeout: {tts_err}")
+                                print(f"Question TTS Error: {tts_err}")
                                 resp_audio_b64 = None
                             
                             # Send text and audio together

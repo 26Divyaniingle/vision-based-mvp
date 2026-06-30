@@ -5,6 +5,10 @@ It handles creating and closing database sessions for each request.
 It also exports data to CSV files whenever new data is added.
 """
 
+# CRITICAL: Load environment variables BEFORE importing settings
+from dotenv import load_dotenv
+load_dotenv()
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import event  # Used for database event listeners

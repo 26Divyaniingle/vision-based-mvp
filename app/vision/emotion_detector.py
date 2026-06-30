@@ -41,12 +41,17 @@ def analyze_emotion(image_base64: str) -> str:
     
     try:
         # Use DeepFace to analyze emotions
-        # Use opencv as it is more compatible in this environment
-        objs = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False, detector_backend="opencv")
+        # Use ssd as it is more robust, falling back to opencv
+        try:
+            objs = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False, detector_backend="ssd")
+        except Exception:
+            objs = DeepFace.analyze(img, actions=['emotion'], enforce_detection=False, detector_backend="opencv")
         
         if objs and len(objs) > 0:
-            # Check if a face was actually detected (OpenCV backend might return empty face if not found)
-            if 'region' in objs[0] and (objs[0]['region']['w'] == 0 or objs[0]['region']['h'] == 0):
+            # Check if a face was actually detected
+            region = objs[0].get('region', {})
+            if region.get('w', 0) == 0 or region.get('h', 0) == 0:
+                print("DEBUG: Emotion analysis - No face in region.")
                 return None
 
             emotion_scores = objs[0]['emotion']
@@ -72,7 +77,7 @@ def analyze_emotion(image_base64: str) -> str:
                 
             return dominant
     except Exception as e:
-        print("Emotion analysis error:", e)
+        print(f"DeepFace emotion analysis error: {e}")
     
     # Return None if anything goes wrong to distinguish from 'neutral'
     return None

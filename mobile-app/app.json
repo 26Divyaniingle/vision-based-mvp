@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "MediSense needs access to the microphone for clinical voice analysis."
+        "NSMicrophoneUsageDescription": "MedSense AI needs access to the microphone for clinical voice analysis."
       }
     },
     "android": {

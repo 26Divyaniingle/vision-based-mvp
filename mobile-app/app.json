@@ -37,8 +37,13 @@
     },
     "extra": {
       "eas": {
-        "projectId": "ce079e1f-33a2-4a47-a6bd-f74cb3183908"
+        "projectId": "558fe525-ad22-4704-9e94-07b445616df6"
       }
-    }
+    },
+    "owner": "divya12345",
+    "plugins": [
+      "expo-audio",
+      "expo-sharing"
+    ]
   }
 }

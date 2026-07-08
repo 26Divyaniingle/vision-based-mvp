@@ -1,0 +1,17 @@
+# Ignore parent project's backend and venv
+../app/
+../venv/
+../scripts/
+../data/
+
+# Ignore local dependencies
+node_modules/
+dist/
+
+# Ignore sensitive files (they should be added in EAS secrets instead)
+.env
+.env.local
+
+# Ignore OS specific files
+.DS_Store
+Thumbs.db

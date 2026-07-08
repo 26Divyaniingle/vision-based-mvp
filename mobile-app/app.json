@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Medsense Medical AI",
+    "name": "MedSense AI",
     "slug": "medsense-medical-ai-",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "MediSense needs access to the microphone for clinical voice analysis."
+        "NSMicrophoneUsageDescription": "MedSense AI needs access to the microphone for clinical voice analysis."
       }
     },
     "android": {
@@ -37,9 +37,10 @@
     },
     "extra": {
       "eas": {
-        "projectId": "c5844a57-ef5f-4945-89cb-28a92f98c44d"
+        "projectId": "558fe525-ad22-4704-9e94-07b445616df6"
       }
     },
+    "owner": "divya12345",
     "plugins": [
       "expo-asset",
       "expo-audio",

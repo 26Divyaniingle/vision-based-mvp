@@ -15,7 +15,7 @@ import SecurityAlertOverlay from '../../components/SecurityAlertOverlay';
 import AccessLockedModal from '../../components/AccessLockedModal';
 import { buildWsUrl } from '../../api/report';
 
-const doctorAvatar = require('../../../assets/doctor_avatar.png');
+// Removed doctorAvatar require to avoid asset compile issues
 
 const { width: SCREEN_W } = Dimensions.get('window');
 // Sidebar: ~28% of screen width, min 100px, max 130px — comfortable on all mobile sizes
@@ -108,7 +108,7 @@ function ChatBubble({ msg }) {
     <View style={[cbStyles.wrapper, isBot ? cbStyles.botWrapper : cbStyles.patWrapper]}>
       <View style={cbStyles.avatar}>
         {isBot ? (
-          <Image source={doctorAvatar} style={cbStyles.avatarImage} />
+          <Text style={cbStyles.avatarText}>👩‍⚕️</Text>
         ) : (
           <Text style={cbStyles.avatarText}>👤</Text>
         )}
@@ -188,6 +188,7 @@ const ConsultationScreen = ({ route, navigation }) => {
   const isMutedRef        = useRef(isMuted);
   const playTTSRef        = useRef(null);
   const blinkAnim         = useRef(new Animated.Value(0.3)).current;
+  const customFlashAnim   = useRef(new Animated.Value(0)).current;
   const isCapturing       = useRef(false);
 
   // Blinking animation for the "SECURE" dot
@@ -396,10 +397,18 @@ const ConsultationScreen = ({ route, navigation }) => {
           const photo = await cameraRef.current.takePictureAsync({ 
             base64: true, 
             quality: 0.4, // Reduced quality for faster processing
+            shutterSound: false,
           });
           
           if (photo?.base64 && ws.current && ws.current.readyState === WebSocket.OPEN) {
             ws.current.send(JSON.stringify({ type: 'video_frame', image_base64: photo.base64 }));
+            // Trigger localized soft flash effect
+            customFlashAnim.setValue(0.6);
+            Animated.timing(customFlashAnim, {
+              toValue: 0,
+              duration: 400,
+              useNativeDriver: true,
+            }).start();
           }
         } catch (err) {
           console.warn('Background sampling error:', err.message);
@@ -514,6 +523,7 @@ const ConsultationScreen = ({ route, navigation }) => {
                 facing="front"
                 zoom={0}
                 mute={true}
+                animateShutter={false}
                 onCameraReady={() => {
                   console.log("Background Camera READY");
                   isCameraReady.current = true;
@@ -532,6 +542,11 @@ const ConsultationScreen = ({ route, navigation }) => {
                 )}
               </View>
             )}
+            {/* Localized flash effect restricted to sidebar */}
+            <Animated.View 
+              style={[StyleSheet.absoluteFillObject, { backgroundColor: '#ffffff', opacity: customFlashAnim }]} 
+              pointerEvents="none" 
+            />
             <View style={styles.cameraOverlay}>
               <View style={styles.liveBadge}>
                 <Animated.View style={[styles.liveDot, { backgroundColor: Colors.rose, opacity: blinkAnim }]} />
@@ -656,10 +671,7 @@ const ConsultationScreen = ({ route, navigation }) => {
           >
             {messages.length === 0 && (
               <View style={styles.emptyState}>
-                <Image
-                  source={doctorAvatar}
-                  style={styles.emptyDoctorAvatar}
-                />
+                <Text style={{ fontSize: 40 }}>👩‍⚕️</Text>
                 <Text style={styles.emptyTitle}>Session Started</Text>
                 <Text style={styles.emptySub}>
                   Use the mic or keyboard below to begin the consultation.
@@ -671,9 +683,7 @@ const ConsultationScreen = ({ route, navigation }) => {
 
             {isAiSpeaking && (
               <View style={[cbStyles.wrapper, cbStyles.botWrapper]}>
-                <View style={cbStyles.avatar}>
-                  <Image source={doctorAvatar} style={cbStyles.avatarImage} />
-                </View>
+                  <Text style={cbStyles.avatarText}>👩‍⚕️</Text>
                 <View style={[cbStyles.botBubble, { padding: 12 }]}>
                   <AnimatedWaveform active color={Colors.indigo} />
                 </View>
@@ -683,8 +693,20 @@ const ConsultationScreen = ({ route, navigation }) => {
             <View style={{ height: 10 }} />
           </ScrollView>
 
-          {/* AI status banner */}
-          <AIStatusBanner phase={currentPhase} />
+          {/* AI status banner / Guidance Prompt */}
+          {currentPhase ? (
+            <AIStatusBanner phase={currentPhase} />
+          ) : (
+            <View style={styles.guidanceWrapper}>
+              <View style={styles.guidanceBanner}>
+                <Text style={styles.guidanceMessage}>
+                  {isTextMode
+                    ? "⌨️ Keyboard Mode: Type your symptoms below and tap the arrow icon to send."
+                    : "🎙️ Voice Mode: Tap the Microphone button below and start speaking to consult."}
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Symptoms tray — only shown when there are symptoms */}
           {symptoms.length > 0 && (
@@ -726,36 +748,50 @@ const ConsultationScreen = ({ route, navigation }) => {
 
           {/* Toolbar */}
           <View style={styles.toolbar}>
-            <TouchableOpacity
-              style={[styles.toolBtn, isMuted && styles.mutedBtn]}
-              onPress={() => setIsMuted(!isMuted)}
-            >
-              <Text style={styles.toolIcon}>{isMuted ? '🔇' : '🔊'}</Text>
-            </TouchableOpacity>
+            <View style={styles.toolCol}>
+              <TouchableOpacity
+                style={[styles.toolBtn, isMuted && styles.mutedBtn]}
+                onPress={() => setIsMuted(!isMuted)}
+              >
+                <Text style={styles.toolIcon}>{isMuted ? '🔇' : '🔊'}</Text>
+              </TouchableOpacity>
+              <Text style={styles.toolLabel}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+            </View>
 
             {/* Mic — prominent CTA */}
-            <TouchableOpacity
-              style={[styles.micBtn, isMicActive && styles.micBtnActive]}
-              onPress={() => setIsMicActive(!isMicActive)}
-            >
-              {isMicActive
-                ? <Mic color="#fff" size={22} />
-                : <MicOff color={Colors.textSecondary} size={22} />}
-            </TouchableOpacity>
+            <View style={styles.toolCol}>
+              <TouchableOpacity
+                style={[styles.micBtn, isMicActive && styles.micBtnActive]}
+                onPress={() => setIsMicActive(!isMicActive)}
+              >
+                {isMicActive
+                  ? <Mic color="#fff" size={22} />
+                  : <MicOff color={Colors.textSecondary} size={22} />}
+              </TouchableOpacity>
+              <Text style={[styles.toolLabel, styles.micLabel, isMicActive && styles.micLabelActive]}>
+                {isMicActive ? 'Stop & Send' : 'Speak'}
+              </Text>
+            </View>
 
-            <TouchableOpacity
-              style={[styles.toolBtn, isTextMode && styles.activeText]}
-              onPress={() => { setIsTextMode(!isTextMode); setTextInput(''); Keyboard.dismiss(); }}
-            >
-              <Text style={styles.toolIcon}>⌨️</Text>
-            </TouchableOpacity>
+            <View style={styles.toolCol}>
+              <TouchableOpacity
+                style={[styles.toolBtn, isTextMode && styles.activeText]}
+                onPress={() => { setIsTextMode(!isTextMode); setTextInput(''); Keyboard.dismiss(); }}
+              >
+                <Text style={styles.toolIcon}>⌨️</Text>
+              </TouchableOpacity>
+              <Text style={styles.toolLabel}>{isTextMode ? 'Voice Mode' : 'Type Text'}</Text>
+            </View>
 
-            <TouchableOpacity
-              style={[styles.toolBtn, styles.endBtn]}
-              onPress={() => navigation.goBack()}
-            >
-              <LogOut color={Colors.rose} size={18} />
-            </TouchableOpacity>
+            <View style={styles.toolCol}>
+              <TouchableOpacity
+                style={[styles.toolBtn, styles.endBtn]}
+                onPress={() => navigation.goBack()}
+              >
+                <LogOut color={Colors.rose} size={18} />
+              </TouchableOpacity>
+              <Text style={styles.toolLabel}>Exit</Text>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </View>
@@ -1042,6 +1078,45 @@ const styles = StyleSheet.create({
   activeText:   { backgroundColor: Colors.indigo, ...Shadows.glow },
   endBtn:       { backgroundColor: 'rgba(244,63,94,0.06)', borderColor: Colors.rose },
   toolIcon:     { fontSize: 17 },
+  toolCol: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  toolLabel: {
+    color: 'rgba(255, 255, 255, 0.45)',
+    fontSize: 9,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  micLabel: {
+    color: 'rgba(255, 255, 255, 0.70)',
+    fontWeight: '800',
+  },
+  micLabelActive: {
+    color: Colors.emerald,
+  },
+  guidanceWrapper: {
+    paddingHorizontal: 20,
+    paddingBottom: 6,
+  },
+  guidanceBanner: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.22)',
+    backgroundColor: 'rgba(99,102,241,0.06)',
+    padding: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guidanceMessage: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#cbd5e1',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
 });
 
 export default ConsultationScreen;

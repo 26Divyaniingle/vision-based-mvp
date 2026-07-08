@@ -114,6 +114,7 @@ const SecurityAlertOverlay = ({
       const photo = await cameraRef.current.takePictureAsync({
         base64: true,
         quality: 0.4,
+        shutterSound: false,
       });
       setPhase('verifying');
       setIsCapturing(false);

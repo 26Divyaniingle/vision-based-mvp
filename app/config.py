@@ -58,6 +58,7 @@ class Settings(BaseSettings):
         # Try to get from environment variable first
         url = os.getenv("DATABASE_URL")
         
+        
         # If no environment variable is found, allow individual overrides or use medsense defaults
         if not url:
             user = os.getenv("DB_USER") or os.getenv("USER") or "medsense"

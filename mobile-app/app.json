@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile-app",
-    "slug": "mobile-app",
+    "name": "Medsense Medical AI",
+    "slug": "medsense-medical-ai-",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -30,15 +30,21 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.MedSense.ai"
+      "package": "com.medsense.ai"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "ce079e1f-33a2-4a47-a6bd-f74cb3183908"
+        "projectId": "c5844a57-ef5f-4945-89cb-28a92f98c44d"
       }
-    }
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-audio",
+      "expo-sharing",
+      "expo-font"
+    ]
   }
 }
